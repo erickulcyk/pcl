@@ -108,18 +108,21 @@ if(CMAKE_COMPILER_IS_GNUCXX)
       add_definitions("-DBOOST_LIB_DIAGNOSTIC -DBOOST_THREAD_USE_LIB")
     endif(PCL_SHARED_LIBS)
   endif()
-  
-  # Enable C++11 support for GCC >= 4.7, or draft support for GCC >= 4.3
-  # http://stackoverflow.com/questions/10984442/how-to-detect-c11-support-of-a-compiler-with-cmake
-  execute_process(COMMAND ${CMAKE_C_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
-  if (GCC_VERSION VERSION_LESS 4.3)
-    message(AUTHOR_WARNING "C++11 support not found. Upgrade to GCC 4.3 or higher (GCC 4.7 or higher prefered).") 
-  elseif (GCC_VERSION VERSION_LESS 4.7)
-    message(AUTHOR_WARNING "C++0x draft standand enabled. If you get any errors update to GCC 4.7 or higher.")
-	SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -std=c++0x" )
-  else ()
-    message(STATUS "C++11 enabled.")
-	SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -std=c++11" )
+endif()
+
+# Enable C++11 for GCC/Clang
+if(CMAKE_COMPILER_IS_GNUCXX OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+  include(CheckCXXCompilerFlag)
+  CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
+  CHECK_CXX_COMPILER_FLAG("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
+  if(COMPILER_SUPPORTS_CXX11)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+	message(STATUS "C++11 enabled.")
+  elseif(COMPILER_SUPPORTS_CXX0X)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
+	message(AUTHOR_WARNING "C++0x draft standand enabled.")
+  else()
+    message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a newer C++ compiler.")
   endif()
 endif()
 
