@@ -220,10 +220,14 @@ namespace pcl
           }
 
           inline bool
-          isFile()
+          isFile() const
           {
             return (openni_device_->isFile());
           }
+
+          // Set the playback speed for file devices. Flag values 0 = maximum possible, -1 = paused (manual reading)
+          void
+          setPlaybackSpeed(float percentOfRecordingSpeed);
 
           void
           setSynchronization (bool enableSync);
@@ -244,6 +248,9 @@ namespace pcl
           setDepthCallback (StreamCallbackFunction depth_callback);
           void
           setIRCallback (StreamCallbackFunction ir_callback);
+
+          void
+          setAutomaticFrameEvents( bool enableTriggering );
 
         protected:
           void shutdown ();
