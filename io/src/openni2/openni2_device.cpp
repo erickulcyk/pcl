@@ -135,7 +135,14 @@ pcl::io::openni2::OpenNI2Device::~OpenNI2Device ()
 {
   stopAllStreams ();
 
-  shutdown ();
+  if ( ir_video_stream_->isValid() )
+    ir_video_stream_->destroy ();
+
+  if ( color_video_stream_->isValid() )
+    color_video_stream_->destroy ();
+
+  if ( depth_video_stream_->isValid() )
+    depth_video_stream_->destroy ();
 
   openni_device_->close ();
 }
@@ -389,20 +396,6 @@ pcl::io::openni2::OpenNI2Device::stopDepthStream ()
     depth_video_stream_->stop ();
     depth_video_started_ = false;
   }
-}
-
-void
-pcl::io::openni2::OpenNI2Device::shutdown ()
-{
-  if ( ir_video_stream_->isValid() )
-    ir_video_stream_->destroy ();
-
-  if ( color_video_stream_->isValid() )
-    color_video_stream_->destroy ();
-
-  if ( depth_video_stream_->isValid() )
-    depth_video_stream_->destroy ();
-
 }
 
 bool
