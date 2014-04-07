@@ -318,6 +318,16 @@ if(WITH_PNG)
   endif(PNG_FOUND)
 endif(WITH_PNG)
 
+# ZLib
+option(WITH_ZLIB "Zlib support" TRUE)
+if(WITH_ZLIB)
+	find_package(ZLIB)
+	if (ZLIB_FOUND)
+		set (HAVE_ZLIB ON)
+		include_directories("${ZLIB_INCLUDE_DIR}")
+	endif(ZLIB_FOUND)
+endif(WITH_ZLIB)
+
 # Qhull
 option(WITH_QHULL "Include convex-hull operations" TRUE)
 if(WITH_QHULL)

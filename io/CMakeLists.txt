@@ -5,9 +5,9 @@ set(SUBSYS_DEPS common octree)
 set(build TRUE)
 PCL_SUBSYS_OPTION(build "${SUBSYS_NAME}" "${SUBSYS_DESC}" ON)
 if(WIN32)
-    PCL_SUBSYS_DEPEND(build "${SUBSYS_NAME}" DEPS ${SUBSYS_DEPS} OPT_DEPS openni openni2 pcap png vtk)
+    PCL_SUBSYS_DEPEND(build "${SUBSYS_NAME}" DEPS ${SUBSYS_DEPS} OPT_DEPS openni openni2 pcap png zlib vtk)
 else(WIN32)
-    PCL_SUBSYS_DEPEND(build "${SUBSYS_NAME}" DEPS ${SUBSYS_DEPS} OPT_DEPS openni openni2 pcap png vtk libusb-1.0)
+    PCL_SUBSYS_DEPEND(build "${SUBSYS_NAME}" DEPS ${SUBSYS_DEPS} OPT_DEPS openni openni2 pcap png zlib vtk libusb-1.0)
 endif(WIN32)
 
 PCL_ADD_DOC("${SUBSYS_NAME}")
@@ -203,6 +203,9 @@ if(build)
         src/image_grabber.cpp
         src/hdl_grabber.cpp
         src/robot_eye_grabber.cpp
+	src/net_grabber.cpp
+	src/fringe_compression.cpp
+	src/zpipe.cpp
         ${VTK_IO_SOURCE}
         ${OPENNI_GRABBER_SOURCES}
         ${OPENNI2_GRABBER_SOURCES}
@@ -244,6 +247,7 @@ if(build)
         "include/pcl/${SUBSYS_NAME}/image_grabber.h"
         "include/pcl/${SUBSYS_NAME}/hdl_grabber.h"
         "include/pcl/${SUBSYS_NAME}/robot_eye_grabber.h"
+	"include/pcl/${SUBSYS_NAME}/net_grabber.h"
         "include/pcl/${SUBSYS_NAME}/point_cloud_image_extractors.h"
         ${VTK_IO_INCLUDES}
         ${OPENNI_GRABBER_INCLUDES}
@@ -259,6 +263,8 @@ if(build)
         include/pcl/compression/compression_profiles.h
         include/pcl/compression/entropy_range_coder.h
         include/pcl/compression/point_coding.h
+	include/pcl/compression/fringe_compression.h
+	include/pcl/compression/zpipe.h
        )
     if(PNG_FOUND)
       list(APPEND compression_incs
@@ -295,8 +301,12 @@ if(build)
     link_directories(${VTK_LINK_DIRECTORIES})
     target_link_libraries("${LIB_NAME}" pcl_common pcl_io_ply ${VTK_IO_TARGET_LINK_LIBRARIES} )
     if(PNG_FOUND)
-      target_link_libraries("${LIB_NAME}" "${PNG_LIBRARY}")
+	    target_link_libraries("${LIB_NAME}" "${PNG_LIBRARY}")
     endif(PNG_FOUND)
+
+    if(ZLIB_FOUND)
+	    target_link_libraries("${LIB_NAME}" "${ZLIB_LIBRARY}")
+    endif(ZLIB_FOUND)
 
     if(LIBUSB_1_FOUND)
       target_link_libraries("${LIB_NAME}" ${LIBUSB_1_LIBRARIES})
