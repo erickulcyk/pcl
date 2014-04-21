@@ -48,10 +48,10 @@ namespace pcl
 		unsigned height;
 		float depthFocalLengthX;
 		float depthFocalLengthY;
-		float focalLengthX;
-		float focalLengthY;
-		float principalPointX;
-		float principalPointY;
+		double focalLengthX;
+    double focalLengthY;
+    double principalPointX;
+    double principalPointY;
 		float shadowValue;
 		float noSampleValue;
 	};
