@@ -122,6 +122,9 @@ namespace pcl
     virtual std::string
       getName() const;
 
+    virtual float
+      getFramesPerSecond() const;
+
     /** \brief Obtain the number of frames per second (FPS). */
     inline OpenNICameraParameters
       getCameraParameters() const { return cameraParameters_; };
@@ -177,7 +180,8 @@ namespace pcl
     void depth_image_cb_
       (
       const boost::shared_ptr<Image>& rgbImage,
-      const boost::shared_ptr<DepthImage>& depthImage
+      const boost::shared_ptr<DepthImage>& depthImage,
+      float focalLength
       );
 
     void getOpenNICameraParameters(OpenNICameraParameters& parameters, boost::shared_ptr<OpenNIGrabber> openNIGrabber);
@@ -211,10 +215,12 @@ namespace pcl
       * \param[in] depth the depth image to convert
       */
     pcl::PointCloud<pcl::PointXYZ>::Ptr
-      convertToXYZPointCloud(
+      convertToXYZPointCloud
+      (
       const OpenNICameraParameters & camSettings,
       const vector<unsigned short> & depthBuffer,
-      int frameId) const;
+      int frameId
+      ) const;
 
     int serverReadOnce
       (

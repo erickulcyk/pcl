@@ -67,9 +67,10 @@ namespace pcl
     {
       boost::function<void(
         const Image::Ptr &image,
-        const DepthImage::Ptr &depth_image
+        const DepthImage::Ptr &depth_image,
+        float focalLength
         )> f =
-        boost::bind(&NetGrabber::depth_image_cb_, this, _1, _2);
+        boost::bind(&NetGrabber::depth_image_cb_, this, _1, _2, _3);
 
       grabber->registerCallback(f);
     }
@@ -81,9 +82,10 @@ namespace pcl
     {
       boost::function<void(
         const Image::Ptr &image,
-        const DepthImage::Ptr &depth_image
+        const DepthImage::Ptr &depth_image,
+        float focalLength
         )> f =
-        boost::bind(&NetGrabber::depth_image_cb_, this, _1, _2);
+        boost::bind(&NetGrabber::depth_image_cb_, this, _1, _2, _3);
 
       grabber->registerCallback(f);
     }
@@ -354,7 +356,8 @@ namespace pcl
     void NetGrabber::depth_image_cb_
     (
     const boost::shared_ptr<Image>& rgbImage,
-    const boost::shared_ptr<DepthImage>& depthImage
+    const boost::shared_ptr<DepthImage>& depthImage,
+    float focalLength
     )
   {
       OpenNICameraParameters parameters;
@@ -397,6 +400,11 @@ namespace pcl
     openNIGrabber->getDepthCameraIntrinsics(parameters.focalLengthX, parameters.focalLengthY, parameters.principalPointX, parameters.principalPointY);
     parameters.fps = openNIGrabber->getFramesPerSecond();
 
+  }
+
+  float NetGrabber::getFramesPerSecond() const
+  {
+    return device_->getFramesPerSecond();
   }
 
   void NetGrabber::encodeDepthImage
