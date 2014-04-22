@@ -79,7 +79,7 @@ namespace pcl
                     writePose (filename_pose, teVecs, erreMats);
           
         // Save Image
-        pcl::io::saveRgbPNGFile (filename_image, (unsigned char*)rgb24.data, 640,480);
+        //pcl::io::saveRgbPNGFile (filename_image, (unsigned char*)rgb24.data, 640,480);
           
         screenshot_counter++;
       }

@@ -1,7 +1,7 @@
 set(SUBSYS_NAME gpu_kinfu_large_scale)
 set(SUBSYS_PATH gpu/kinfu_large_scale)
 set(SUBSYS_DESC "Kinect Fusion implementation, with volume shifting")
-set(SUBSYS_DEPS common visualization io gpu_containers gpu_utils geometry search octree filters kdtree features surface)
+set(SUBSYS_DEPS common io gpu_containers gpu_utils geometry search octree filters kdtree features surface)
 
 set(build FALSE)
 
@@ -74,7 +74,10 @@ if (build)
 	PCL_ADD_INCLUDES("${SUBSYS_NAME}" "${SUBSYS_PATH}" ${incs})
 	
 	add_subdirectory(test)
-	add_subdirectory(tools)
+	add_subdirectory(embedded_tools)
+	if(BUILD_visualization)
+		add_subdirectory(tools)
+	endif()
 endif()
 
 

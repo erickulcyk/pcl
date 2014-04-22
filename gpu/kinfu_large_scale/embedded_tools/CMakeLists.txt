@@ -1,6 +1,6 @@
 ## KINECT FUSION
-set(the_target pcl_kinfu_largeScale)
-set(srcs kinfuLS_app.cpp capture.cpp evaluation.cpp)
+set(the_target pcl_embedded_kinfu_largeScale)
+set(srcs kinfuLS_app.cpp )
 
 source_group("Source Files" FILES ${srcs} )
 

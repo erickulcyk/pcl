@@ -53,7 +53,7 @@
 #include <boost/filesystem.hpp> 
 //#include <boost/graph/buffer_concepts.hpp>
 
-#include <pcl/io/png_io.h>
+//#include <pcl/io/png_io.h>
 
 #include <pcl/console/print.h>
 
