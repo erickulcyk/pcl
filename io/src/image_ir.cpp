@@ -67,7 +67,7 @@ pcl::io::IRImage::getData ()
 
 
 int
-pcl::io::IRImage::getDataSize ()
+pcl::io::IRImage::getDataSize () const
 {
   return (wrapper_->getDataSize ());
 }

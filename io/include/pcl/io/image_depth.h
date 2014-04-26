@@ -167,7 +167,14 @@ namespace pcl
 
         // Data buffer size in bytes
         int
-        getDataSize ();
+        getDataSize () const;
+
+        // Size of each row, including any padding
+        inline unsigned
+        getStep() const
+        {
+          return (getDataSize() / getHeight());
+        }
 
       protected:
         pcl::io::FrameWrapper::Ptr wrapper_;

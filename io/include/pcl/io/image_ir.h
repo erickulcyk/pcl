@@ -88,7 +88,14 @@ namespace pcl
 
         // Data buffer size in bytes
         int
-        getDataSize ();
+        getDataSize () const;
+
+        // Size of each row, including any padding
+        inline unsigned
+        getStep() const
+        {
+          return (getDataSize() / getHeight());
+        }
 
         /** \brief method to access the internal data structure wrapper, which needs to be cast to an 
         * approperate subclass before the getMetadata(..) function is available to access the native data type.

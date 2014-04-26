@@ -79,7 +79,7 @@ pcl::io::DepthImage::getData ()
 
 
 int
-pcl::io::DepthImage::getDataSize ()
+pcl::io::DepthImage::getDataSize () const
 {
   return (wrapper_->getDataSize ());
 }

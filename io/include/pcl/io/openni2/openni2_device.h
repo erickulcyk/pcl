@@ -182,11 +182,19 @@ namespace pcl
           getDefaultDepthMode () const;
 
           float
-          getIRFocalLength (int output_y_resolution) const;
+          getIRFocalLength () const;
           float
-          getColorFocalLength (int output_y_resolution) const;
+          getColorFocalLength () const;
           float
-          getDepthFocalLength (int output_y_resolution) const;
+          getDepthFocalLength () const;
+
+          // Baseline between sensors. Returns 0 if this value does not exist.
+          float
+          getBaseline();
+
+          // Value of pixels in shadow or that have no valid measurement
+          uint64_t
+          getShadowValue();
 
           void
           setAutoExposure (bool enable);
@@ -284,11 +292,6 @@ namespace pcl
           uint64_t shadow_value_;
           /** the value for pixels without a valid disparity measurement */
           uint64_t no_sample_value_;
-
-          /** \brief focal length for IR camera producing depth information in native SXGA mode */
-          float depth_focal_length_SXGA_;
-          /** \brief focal length for regular camera producing color images in native SXGA mode */
-          float rgb_focal_length_SXGA_;
       };
 
       PCL_EXPORTS std::ostream& operator<< (std::ostream& stream, const OpenNI2Device& device);

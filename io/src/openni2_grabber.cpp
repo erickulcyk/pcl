@@ -55,6 +55,7 @@ using namespace pcl::io::openni2;
 
 namespace pcl
 {
+  // Treat color as chars, float32, or uint32
   typedef union
   {
     struct
@@ -91,6 +92,9 @@ pcl::io::OpenNI2Grabber::OpenNI2Grabber (const std::string& device_id, const Mod
   , running_ (false)
   , rgb_parameters_(std::numeric_limits<double>::quiet_NaN () )
   , depth_parameters_(std::numeric_limits<double>::quiet_NaN () )
+  , color_resize_buffer_(0)
+  , depth_resize_buffer_(0)
+  , ir_resize_buffer_(0)
 {
   // initialize driver
   updateModeMaps (); // registering mapping from PCL enum modes to openni::VideoMode and vice versa
@@ -120,7 +124,7 @@ pcl::io::OpenNI2Grabber::OpenNI2Grabber (const std::string& device_id, const Mod
     rgb_sync_.addCallback (boost::bind (&OpenNI2Grabber::imageDepthImageCallback, this, _1, _2));
   }
 
-  // Register callbacks from the sensor to the grabber
+  // callbacks from the sensor to the grabber
   device_->setColorCallback (boost::bind (&OpenNI2Grabber::processColorFrame, this, _1));
   device_->setDepthCallback (boost::bind (&OpenNI2Grabber::processDepthFrame, this, _1));
   device_->setIRCallback (boost::bind (&OpenNI2Grabber::processIRFrame, this, _1));
@@ -403,7 +407,7 @@ pcl::io::OpenNI2Grabber::startSynchronization ()
   }
   catch (const IOException& exception)
   {
-    PCL_THROW_EXCEPTION (pcl::IOException, "Could not start synchronization " << exception.what ());
+    std::cerr << exception.what() << std::endl;
   }
 }
 
@@ -485,7 +489,7 @@ pcl::io::OpenNI2Grabber::imageDepthImageCallback (const Image::Ptr &image,
 
   if (image_depth_image_signal_->num_slots () > 0)
   {
-    float reciprocalFocalLength = 1.0f / device_->getDepthFocalLength (depth_width_);
+    float reciprocalFocalLength = 1.0f / device_->getDepthFocalLength ();
     image_depth_image_signal_->operator ()(image, depth_image, reciprocalFocalLength);
   }
 }
@@ -501,7 +505,7 @@ pcl::io::OpenNI2Grabber::irDepthImageCallback (const IRImage::Ptr &ir_image,
 
   if (ir_depth_image_signal_->num_slots () > 0)
   {
-    float reciprocalFocalLength = 1.0f / device_->getDepthFocalLength (depth_width_);
+    float reciprocalFocalLength = 1.0f / device_->getDepthFocalLength ();
     ir_depth_image_signal_->operator ()(ir_image, depth_image, reciprocalFocalLength);
   }
 }
@@ -509,7 +513,7 @@ pcl::io::OpenNI2Grabber::irDepthImageCallback (const IRImage::Ptr &ir_image,
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 pcl::PointCloud<pcl::PointXYZ>::Ptr
-pcl::io::OpenNI2Grabber::convertToXYZPointCloud (const DepthImage::Ptr& depth_image) const
+pcl::io::OpenNI2Grabber::convertToXYZPointCloud (const DepthImage::Ptr& depth_image)
 {
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud <pcl::PointXYZ>);
 
@@ -519,10 +523,10 @@ pcl::io::OpenNI2Grabber::convertToXYZPointCloud (const DepthImage::Ptr& depth_im
 
   cloud->points.resize (cloud->height * cloud->width);
 
-  register float constant_x = 1.0f / device_->getDepthFocalLength (depth_width_);
-  register float constant_y = 1.0f / device_->getDepthFocalLength (depth_width_);
-  register float centerX = ((float)cloud->width - 1.f) / 2.f;
-  register float centerY = ((float)cloud->height - 1.f) / 2.f;
+  float constant_x = 1.0f / device_->getDepthFocalLength ();
+  float constant_y = 1.0f / device_->getDepthFocalLength ();
+  float centerX = ((float)cloud->width - 1.f) / 2.f;
+  float centerY = ((float)cloud->height - 1.f) / 2.f;
 
   if (pcl_isfinite (depth_parameters_.focal_length_x))
     constant_x =  1.0f / static_cast<float> (depth_parameters_.focal_length_x);
@@ -536,8 +540,7 @@ pcl::io::OpenNI2Grabber::convertToXYZPointCloud (const DepthImage::Ptr& depth_im
   if (pcl_isfinite (depth_parameters_.principal_point_y))
     centerY =  static_cast<float> (depth_parameters_.principal_point_y);
 
-  //if (device_->isDepthRegistered ())
-  if (true)
+  if ( device_->isDepthRegistered() )
     cloud->header.frame_id = rgb_frame_id_;
   else
     cloud->header.frame_id = depth_frame_id_;
@@ -545,26 +548,20 @@ pcl::io::OpenNI2Grabber::convertToXYZPointCloud (const DepthImage::Ptr& depth_im
 
   float bad_point = std::numeric_limits<float>::quiet_NaN ();
 
-  // we have to use Data, since operator[] uses assert -> Debug-mode very slow!
-  register const unsigned short* depth_map = (const unsigned short*) depth_image->getData ();
+  const uint16_t* depth_map = (const uint16_t*) depth_image->getData ();
   if (depth_image->getWidth () != depth_width_ || depth_image->getHeight () != depth_height_)
   {
-    static unsigned buffer_size = 0;
-    static boost::shared_array<unsigned short> depth_buffer ((unsigned short*)(NULL));
+    // Resize the image if nessacery
+    depth_resize_buffer_.resize(depth_width_ * depth_height_);
 
-    if (buffer_size < depth_width_ * depth_height_)
-    {
-      buffer_size = depth_width_ * depth_height_;
-      depth_buffer.reset (new unsigned short [buffer_size]);
-    }
-    depth_image->fillDepthImageRaw (depth_width_, depth_height_, depth_buffer.get ());
-    depth_map = depth_buffer.get ();
+    depth_image->fillDepthImageRaw (depth_width_, depth_height_, (uint16_t*) depth_resize_buffer_.data() );
+    depth_map = depth_resize_buffer_.data();
   }
 
-  register int depth_idx = 0;
+  int depth_idx = 0;
   for (int v = 0; v < depth_height_; ++v)
   {
-    for (register int u = 0; u < depth_width_; ++u, ++depth_idx)
+    for (int u = 0; u < depth_width_; ++u, ++depth_idx)
     {
       pcl::PointXYZ& pt = cloud->points[depth_idx];
       // Check for invalid measurements
@@ -592,13 +589,8 @@ pcl::io::OpenNI2Grabber::convertToXYZPointCloud (const DepthImage::Ptr& depth_im
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT> typename pcl::PointCloud<PointT>::Ptr
-pcl::io::OpenNI2Grabber::convertToXYZRGBPointCloud (const Image::Ptr &image,
- const DepthImage::Ptr &depth_image) const
+pcl::io::OpenNI2Grabber::convertToXYZRGBPointCloud (const Image::Ptr &image, const DepthImage::Ptr &depth_image)
 {
-  static unsigned rgb_array_size = 0;
-  static boost::shared_array<unsigned char> rgb_array ((unsigned char*)(NULL));
-  static unsigned char* rgb_buffer = 0;
-
   boost::shared_ptr<pcl::PointCloud<PointT> > cloud (new pcl::PointCloud<PointT>);
 
   cloud->header.frame_id = rgb_frame_id_;
@@ -609,10 +601,10 @@ pcl::io::OpenNI2Grabber::convertToXYZRGBPointCloud (const Image::Ptr &image,
   cloud->points.resize (cloud->height * cloud->width);
 
   // Generate default camera parameters
-  float fx = device_->getColorFocalLength (depth_width_); // Horizontal focal length
-  float fy = device_->getColorFocalLength (depth_width_); // Vertcal focal length
-  register float cx = ((float)cloud->width - 1.f) / 2.f;  // Center x
-  register float cy = ((float)cloud->height - 1.f) / 2.f; // Center y
+  float fx = device_->getColorFocalLength (); // Horizontal focal length
+  float fy = device_->getColorFocalLength (); // Vertcal focal length
+  float cx = ((float)cloud->width - 1.f) / 2.f;  // Center x
+  float cy = ((float)cloud->height - 1.f) / 2.f; // Center y
 
   // Load pre-calibrated camera parameters if they exist
   if (pcl_isfinite (depth_parameters_.focal_length_x))
@@ -628,33 +620,28 @@ pcl::io::OpenNI2Grabber::convertToXYZRGBPointCloud (const Image::Ptr &image,
     cy =  static_cast<float> (depth_parameters_.principal_point_y);
 
   // Get inverse focal length for calculations below
-  register float fx_inv = 1.0f / fx;
-  register float fy_inv = 1.0f / fy;
+  float fx_inv = 1.0f / fx;
+  float fy_inv = 1.0f / fy;
 
-  register const OniDepthPixel* depth_map = (OniDepthPixel*) depth_image->getData ();
+  const uint16_t* depth_map = (const uint16_t*) depth_image->getData ();
   if (depth_image->getWidth () != depth_width_ || depth_image->getHeight () != depth_height_)
   {
-    static unsigned buffer_size = 0;
-    static boost::shared_array<unsigned short> depth_buffer ((unsigned short*)(NULL));
-
-    if (buffer_size < depth_width_ * depth_height_)
-    {
-      buffer_size = depth_width_ * depth_height_;
-      depth_buffer.reset (new unsigned short [buffer_size]);
-    }
-
-    depth_image->fillDepthImageRaw (depth_width_, depth_height_, depth_buffer.get ());
-    depth_map = depth_buffer.get ();
+    // Resize the image if nessacery
+    depth_resize_buffer_.resize(depth_width_ * depth_height_);
+    depth_map = depth_resize_buffer_.data();
+    depth_image->fillDepthImageRaw (depth_width_, depth_height_, (unsigned short*) depth_map );
   }
 
-  // here we need exact the size of the point cloud for a one-one correspondence!
-  if (rgb_array_size < image_width_ * image_height_ * 3)
+  const uint8_t* rgb_buffer = (const uint8_t*) image->getData ();
+  if (image->getWidth () != image_width_ || image->getHeight () != image_height_)
   {
-    rgb_array_size = image_width_ * image_height_ * 3;
-    rgb_array.reset (new unsigned char [rgb_array_size]);
-    rgb_buffer = rgb_array.get ();
+    // Resize the image if nessacery
+    color_resize_buffer_.resize(image_width_ * image_height_ * 3);
+    rgb_buffer = color_resize_buffer_.data();
+    image->fillRGB (image_width_, image_height_, (unsigned char*) rgb_buffer, image_width_ * 3);
   }
-  image->fillRGB (image_width_, image_height_, rgb_buffer, image_width_ * 3);
+
+
   float bad_point = std::numeric_limits<float>::quiet_NaN ();
 
   // set xyz to Nan and rgb to 0 (black)  
@@ -675,7 +662,7 @@ pcl::io::OpenNI2Grabber::convertToXYZRGBPointCloud (const Image::Ptr &image,
   int point_idx = 0;
   for (int v = 0; v < depth_height_; ++v, point_idx += skip)
   {
-    for (register int u = 0; u < depth_width_; ++u, ++value_idx, point_idx += step)
+    for (int u = 0; u < depth_width_; ++u, ++value_idx, point_idx += step)
     {
       PointT& pt = cloud->points[point_idx];
       /// @todo Different values for these cases
@@ -727,8 +714,7 @@ pcl::io::OpenNI2Grabber::convertToXYZRGBPointCloud (const Image::Ptr &image,
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 pcl::PointCloud<pcl::PointXYZI>::Ptr
-pcl::io::OpenNI2Grabber::convertToXYZIPointCloud (const IRImage::Ptr &ir_image,
-  const DepthImage::Ptr &depth_image) const
+pcl::io::OpenNI2Grabber::convertToXYZIPointCloud (const IRImage::Ptr &ir_image, const DepthImage::Ptr &depth_image)
 {
   boost::shared_ptr<pcl::PointCloud<pcl::PointXYZI> > cloud (new pcl::PointCloud<pcl::PointXYZI > ());
 
@@ -739,18 +725,17 @@ pcl::io::OpenNI2Grabber::convertToXYZIPointCloud (const IRImage::Ptr &ir_image,
 
   cloud->points.resize (cloud->height * cloud->width);
 
-
-  float fx = device_->getColorFocalLength (depth_width_); // Horizontal focal length
-  float fy = device_->getColorFocalLength (depth_width_); // Vertcal focal length
-  register float cx = ((float)cloud->width - 1.f) / 2.f;  // Center x
-  register float cy = ((float)cloud->height - 1.f) / 2.f; // Center y
+  float fx = device_->getColorFocalLength (); // Horizontal focal length
+  float fy = device_->getColorFocalLength (); // Vertcal focal length
+  float cx = ((float)cloud->width - 1.f) / 2.f;  // Center x
+  float cy = ((float)cloud->height - 1.f) / 2.f; // Center y
 
   // Load pre-calibrated camera parameters if they exist
   if (pcl_isfinite (depth_parameters_.focal_length_x))
-    fx =  1.0f / static_cast<float> (depth_parameters_.focal_length_x);
+    fx =  static_cast<float> (depth_parameters_.focal_length_x);
 
   if (pcl_isfinite (depth_parameters_.focal_length_y))
-    fy =  1.0f / static_cast<float> (depth_parameters_.focal_length_y);
+    fy =  static_cast<float> (depth_parameters_.focal_length_y);
 
   if (pcl_isfinite (depth_parameters_.principal_point_x))
     cx =  static_cast<float> (depth_parameters_.principal_point_x);
@@ -758,40 +743,35 @@ pcl::io::OpenNI2Grabber::convertToXYZIPointCloud (const IRImage::Ptr &ir_image,
   if (pcl_isfinite (depth_parameters_.principal_point_y))
     cy =  static_cast<float> (depth_parameters_.principal_point_y);
 
-  register float fx_inv = 1.0f / fx;
-  register float fy_inv = 1.0f / fy;
+  float fx_inv = 1.0f / fx;
+  float fy_inv = 1.0f / fy;
 
 
-
-  register const unsigned short* depth_map = (const unsigned short*) depth_image->getData ();
-  register const unsigned short* ir_map = ir_image->getData ();
-
+  const uint16_t* depth_map = (const uint16_t*) depth_image->getData ();
   if (depth_image->getWidth () != depth_width_ || depth_image->getHeight () != depth_height_)
   {
-    static unsigned buffer_size = 0;
-    static boost::shared_array<unsigned short> depth_buffer ((unsigned short*)(NULL));
-    static boost::shared_array<unsigned short> ir_buffer ((unsigned short*)(NULL));
-
-    if (buffer_size < depth_width_ * depth_height_)
-    {
-      buffer_size = depth_width_ * depth_height_;
-      depth_buffer.reset (new unsigned short [buffer_size]);
-      ir_buffer.reset (new unsigned short [buffer_size]);
-    }
-
-    depth_image->fillDepthImageRaw (depth_width_, depth_height_, depth_buffer.get ());
-    depth_map = depth_buffer.get ();
-
-    ir_image->fillRaw (depth_width_, depth_height_, ir_buffer.get ());
-    ir_map = ir_buffer.get ();
+    // Resize the image if nessacery
+    depth_resize_buffer_.resize(depth_width_ * depth_height_);
+    depth_map = depth_resize_buffer_.data();
+    depth_image->fillDepthImageRaw (depth_width_, depth_height_, (unsigned short*) depth_map );
   }
 
-  register int depth_idx = 0;
+  const uint16_t* ir_map = (const uint16_t*) ir_image->getData ();
+  if (ir_image->getWidth () != depth_width_ || ir_image->getHeight () != depth_height_)
+  {
+    // Resize the image if nessacery
+    ir_resize_buffer_.resize(depth_width_ * depth_height_);
+    ir_map = ir_resize_buffer_.data();
+    ir_image->fillRaw (depth_width_, depth_height_, (unsigned short*) ir_map);
+  }
+
+
+  int depth_idx = 0;
   float bad_point = std::numeric_limits<float>::quiet_NaN ();
 
   for (int v = 0; v < depth_height_; ++v)
   {
-    for (register int u = 0; u < depth_width_; ++u, ++depth_idx)
+    for (int u = 0; u < depth_width_; ++u, ++depth_idx)
     {
       pcl::PointXYZI& pt = cloud->points[depth_idx];
       /// @todo Different values for these cases
@@ -805,8 +785,8 @@ pcl::io::OpenNI2Grabber::convertToXYZIPointCloud (const IRImage::Ptr &ir_image,
       else
       {
         pt.z = depth_map[depth_idx] * 0.001f; // millimeters to meters
-        pt.x = (static_cast<float> (u) - cx) * pt.z * fx;
-        pt.y = (static_cast<float> (v) - cy) * pt.z * fy;
+        pt.x = (static_cast<float> (u) - cx) * pt.z * fx_inv;
+        pt.y = (static_cast<float> (v) - cy) * pt.z * fy_inv;
       }
 
       pt.data_c[0] = pt.data_c[1] = pt.data_c[2] = pt.data_c[3] = 0;
@@ -905,7 +885,7 @@ void pcl::io::OpenNI2Grabber::processColorFrame (openni::VideoStream& stream)
   FrameWrapper::Ptr frameWrapper = boost::make_shared<Openni2FrameWrapper>(frame);
 
   openni::PixelFormat format = frame.getVideoMode ().getPixelFormat ();
-  boost::shared_ptr<Image> image (nullptr);
+  boost::shared_ptr<Image> image;
 
   // Convert frame to PCL image type, based on pixel format
   if (format == openni::PIXEL_FORMAT_YUV422)
@@ -913,7 +893,7 @@ void pcl::io::OpenNI2Grabber::processColorFrame (openni::VideoStream& stream)
   else //if (format == PixelFormat::PIXEL_FORMAT_RGB888)
     image = boost::make_shared<ImageRGB24> (frameWrapper, t_callback);
 
-  imageCallback (image, nullptr);
+  imageCallback (image, NULL);
 }
 
 
@@ -924,18 +904,16 @@ void pcl::io::OpenNI2Grabber::processDepthFrame (openni::VideoStream& stream)
   FrameWrapper::Ptr frameWrapper = boost::make_shared<Openni2FrameWrapper>(frame);
 
   boost::posix_time::ptime t_readFrameTimestamp = boost::posix_time::microsec_clock::local_time ();
-  int frameWidth = frame.getWidth ();
-  float focalLength = device_->getDepthFocalLength (frameWidth);
+  float focalLength = device_->getDepthFocalLength ();
 
-  // Hack. Need to get these from sensor/stream
-  float baseline = 0.0762f; 
-  float shadow_value = 0;
-  float no_sample_value = 0;
+  float baseline = device_->getBaseline();
+  uint64_t no_sample_value = device_->getShadowValue();
+  uint64_t shadow_value = no_sample_value;
   
   boost::shared_ptr<DepthImage> image  = 
    boost::make_shared<DepthImage> (frameWrapper, baseline, focalLength, shadow_value, no_sample_value);
 
-  depthCallback (image, nullptr);
+  depthCallback (image, NULL);
 }
 
 
@@ -949,7 +927,7 @@ void pcl::io::OpenNI2Grabber::processIRFrame (openni::VideoStream& stream)
 
   boost::shared_ptr<IRImage> image = boost::make_shared<IRImage> ( frameWrapper );
 
-  irCallback (image, nullptr);
+  irCallback (image, NULL);
 }
 
 #endif // HAVE_OPENNI2

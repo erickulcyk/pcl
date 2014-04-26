@@ -47,19 +47,17 @@ if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(OPENNI2_SUFFIX 64)
 endif(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
 
-#add a hint so that it can find it without the pkg-config
 find_path(OPENNI2_INCLUDE_DIRS OpenNI.h
-          HINTS ${PC_OPENNI2_INCLUDEDIR} ${PC_OPENNI2_INCLUDE_DIRS} /usr/include/openni2 /usr/include/ni "${OPENNI2_ROOT}" "$ENV{OPENNI2_ROOT}"
-          PATHS "$ENV{OPENNI2_INCLUDE${OPENNI2_SUFFIX}}"
-          PATH_SUFFIXES openni include Include)
-#add a hint so that it can find it without the pkg-config
+          PATHS "$ENV{OPENNI2_INCLUDE${OPENNI2_SUFFIX}}"  # Linux/Windows default path, Win64 needs '64' suffix
+          )
+
+
 find_library(OPENNI2_LIBRARY
-             NAMES OpenNI2  # No suffix needed on Win64
-             libOpenNI2     # Linux version
-             HINTS ${PC_OPENNI2_LIBDIR} ${PC_OPENNI2_LIBRARY_DIRS} /usr/lib "${OPENNI2_ROOT}" "$ENV{OPENNI2_ROOT}"
-             "$ENV{OPENNI2_REDIST}"
-             PATHS "$ENV{OPENNI2_LIB${OPENNI2_SUFFIX}}"
-             PATH_SUFFIXES lib Lib Lib64)
+              NAMES OpenNI2  # No suffix needed on Win64
+              libOpenNI2     # Linux
+              PATHS "$ENV{OPENNI2_LIB${OPENNI2_SUFFIX}}"  # Windows default path, Win64 needs '64' suffix
+              "$ENV{OPENNI2_REDIST}"                      # Linux install does not use a separate 'lib' directory
+            )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   set(OPENNI2_LIBRARIES ${OPENNI2_LIBRARY} ${LIBUSB_1_LIBRARIES})
