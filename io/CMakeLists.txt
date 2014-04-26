@@ -53,10 +53,6 @@ if(build)
             include/pcl/io/openni2/openni2_device.h
             include/pcl/io/openni2/openni2_device_info.h
             include/pcl/io/openni2/openni2_device_manager.h
-<<<<<<< HEAD
-            ${IMAGE_INCLUDES}
-=======
->>>>>>> 9a89c2982a314f5b487d3ce40f4a3fe989c9b8e7
         )
 
         set(OPENNI2_GRABBER_SOURCES
@@ -67,18 +63,10 @@ if(build)
             src/openni2/openni2_device.cpp
             src/openni2/openni2_device_info.cpp
             src/openni2/openni2_device_manager.cpp
-<<<<<<< HEAD
-            ${IMAGE_SOURCES}
-        )
-
-        source_group("OpenNI 2\\Header Files" FILES ${OPENNI2_GRABBER_INCLUDES} ${OPENNI2_INCLUDES})
-        source_group("OpenNI 2\\Source Files" FILES ${OPENNI2_GRABBER_SOURCES})
-=======
         )
 
       source_group("OpenNI 2\\Header Files" FILES ${OPENNI2_GRABBER_INCLUDES} ${OPENNI2_INCLUDES} ${IMAGE_INCLUDES})
       source_group("OpenNI 2\\Source Files" FILES ${OPENNI2_GRABBER_SOURCES} ${IMAGE_SOURCES})
->>>>>>> 9a89c2982a314f5b487d3ce40f4a3fe989c9b8e7
 
         # Copy OpenNI2 redist directory to bin. Needed for driver modules. Only tested on Windows.
         if(MSVC)
@@ -220,10 +208,7 @@ if(build)
         ${VTK_IO_SOURCE}
         ${OPENNI_GRABBER_SOURCES}
         ${OPENNI2_GRABBER_SOURCES}
-<<<<<<< HEAD
-=======
         ${IMAGE_SOURCES}
->>>>>>> 9a89c2982a314f5b487d3ce40f4a3fe989c9b8e7
         ${DINAST_GRABBER_SOURCES}
         ${FZAPI_GRABBER_SOURCES}
         ${PXC_GRABBER_SOURCES}
@@ -267,10 +252,7 @@ if(build)
         ${VTK_IO_INCLUDES}
         ${OPENNI_GRABBER_INCLUDES}
         ${OPENNI2_GRABBER_INCLUDES}
-<<<<<<< HEAD
-=======
         ${IMAGE_INCLUDES}
->>>>>>> 9a89c2982a314f5b487d3ce40f4a3fe989c9b8e7
         ${DINAST_GRABBER_INCLUDES}
         ${FZAPI_GRABBER_INCLUDES}
         ${PXC_GRABBER_INCLUDES}
@@ -371,11 +353,7 @@ if(build)
     PCL_ADD_INCLUDES("${SUBSYS_NAME}" "${SUBSYS_NAME}" ${incs})
     PCL_ADD_INCLUDES("${SUBSYS_NAME}" compression ${compression_incs})
     PCL_ADD_INCLUDES("${SUBSYS_NAME}" "${SUBSYS_NAME}/openni_camera" ${OPENNI_INCLUDES})
-<<<<<<< HEAD
-    PCL_ADD_INCLUDES("${SUBSYS_NAME}" "${SUBSYS_NAME}/openni2_camera" ${OPENNI2_INCLUDES})
-=======
     PCL_ADD_INCLUDES("${SUBSYS_NAME}" "${SUBSYS_NAME}/openni2" ${OPENNI2_INCLUDES})
->>>>>>> 9a89c2982a314f5b487d3ce40f4a3fe989c9b8e7
     PCL_ADD_INCLUDES("${SUBSYS_NAME}" "${SUBSYS_NAME}/impl" ${impl_incs})
 
     add_subdirectory(tools)
