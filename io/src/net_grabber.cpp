@@ -41,6 +41,8 @@
 #include <pcl/io/net_grabber.h>
 #include <pcl/io/openni2/openni2_video_mode.h>
 #include <iostream>
+#include <pcl/exceptions.h>
+#include <exception>
 //#include <boost/pointer_cast.hpp>
 
 using std::cout;
@@ -53,12 +55,17 @@ namespace pcl
     , mode_(Client)
     , port_(port)
     , serverAddress_(severAddress)
-    , server_()
+    , netVars_()
     , clientSocket_()
     , point_cloud_signal_(), point_cloud_i_signal_(), point_cloud_rgb_signal_(), point_cloud_rgba_signal_()
     , running_(false)
     , compressionParameter_(-1)
   {
+    point_cloud_signal_ = createSignal<sig_cb_point_cloud>();
+    point_cloud_rgb_signal_ = createSignal<sig_cb_point_cloud_rgb>();
+    point_cloud_i_signal_ = createSignal<sig_cb_point_cloud_i>();
+    point_cloud_rgba_signal_ = createSignal<sig_cb_point_cloud_rgba>();
+
     onInit(grabber, port, severAddress);
 
 #ifdef HAVE_OPENNI
@@ -97,12 +104,17 @@ namespace pcl
     , mode_(Server)
     , port_(port)
     , serverAddress_()
-    , server_()
+    , netVars_()
     , clientSocket_()
     , point_cloud_signal_(), point_cloud_i_signal_(), point_cloud_rgb_signal_(), point_cloud_rgba_signal_()
     , running_(false)
     , compressionParameter_(-1)
   {
+    point_cloud_signal_ = createSignal<sig_cb_point_cloud>();
+    point_cloud_rgb_signal_ = createSignal<sig_cb_point_cloud_rgb>();
+    point_cloud_i_signal_ = createSignal<sig_cb_point_cloud_i>();
+    point_cloud_rgba_signal_ = createSignal<sig_cb_point_cloud_rgba>();
+
     onInit(port);
   }
 
@@ -119,26 +131,38 @@ namespace pcl
     return compressionParameter_;
   }
 
-  void NetGrabber::onInit(boost::shared_ptr<Grabber> grabber, int port, const string& serverAddress)
+  bool NetGrabber::onInit(boost::shared_ptr<Grabber> grabber, int port, const string& serverAddress)
   {
-    boost::asio::io_service io_service;
-    tcp::resolver resolver(io_service);
-    std::string port_s = std::to_string(port);
-    tcp::resolver::query query(serverAddress, port_s);
-    tcp::resolver::iterator endpoint_iterator = resolver.resolve(query);
-    tcp::resolver::iterator end;
+    
+    netVars_ = boost::shared_ptr<NetGrabber::NetworkParameters>(new NetGrabber::NetworkParameters());
+    netVars_->io_service = boost::shared_ptr<boost::asio::io_service>(new boost::asio::io_service);
+    netVars_->resolver = boost::shared_ptr<tcp::resolver>(new tcp::resolver(*(netVars_->io_service)));
 
-    clientSocket_ = boost::shared_ptr<tcp::socket>(new tcp::socket(io_service));
-    boost::asio::connect(*clientSocket_, resolver.resolve(query));
+    std::string port_s = std::to_string(port);
+    netVars_->query = boost::shared_ptr<tcp::resolver::query>(new tcp::resolver::query(serverAddress, port_s));
+    tcp::resolver::iterator endpoint_iterator = netVars_->resolver->resolve(*netVars_->query);
+    netVars_->socket = boost::shared_ptr<tcp::socket>(new tcp::socket(*netVars_->io_service));
+    try
+    {
+      boost::asio::connect(*netVars_->socket, endpoint_iterator);
+    }
+    catch (boost::system::system_error)
+    {
+      connectedToServer_ = false;
+      return false;
+    }
+
+    connectedToServer_ = true;
+    return connectedToServer_;
   }
 
   void NetGrabber::onInit(int port)
   {
-    server_ = boost::shared_ptr<NetGrabber::ServerParameters>(new NetGrabber::ServerParameters());
-    server_->io_service = boost::shared_ptr<boost::asio::io_service>(new boost::asio::io_service);
-    server_->endpoint = boost::shared_ptr<tcp::endpoint>(new tcp::endpoint(tcp::v4(), port));
-    server_->acceptor = boost::shared_ptr<tcp::acceptor>(new tcp::acceptor(*server_->io_service, *server_->endpoint));
-    server_->socket = boost::shared_ptr<tcp::socket>(new tcp::socket(*server_->io_service));
+    netVars_ = boost::shared_ptr<NetGrabber::NetworkParameters>(new NetGrabber::NetworkParameters());
+    netVars_->io_service = boost::shared_ptr<boost::asio::io_service>(new boost::asio::io_service);
+    netVars_->endpoint = boost::shared_ptr<tcp::endpoint>(new tcp::endpoint(tcp::v4(), port));
+    netVars_->acceptor = boost::shared_ptr<tcp::acceptor>(new tcp::acceptor(*netVars_->io_service, *netVars_->endpoint));
+    netVars_->socket = boost::shared_ptr<tcp::socket>(new tcp::socket(*netVars_->io_service));
   }
 
   PointCloud<pcl::PointXYZ>::Ptr
@@ -157,28 +181,29 @@ namespace pcl
 
       cloud->points.resize(cloud->height * cloud->width);
 
-      register float constant_x = 1.0f / camSettings.depthFocalLengthX;
-      register float constant_y = 1.0f / camSettings.depthFocalLengthY;
-      register float centerX = ((float) cloud->width - 1.f) / 2.f;
-      register float centerY = ((float) cloud->height - 1.f) / 2.f;
+      float constant_x = 1.0f / camSettings.depthFocalLengthX;
+      float constant_y = 1.0f / camSettings.depthFocalLengthY;
+      float centerX = ((float) cloud->width - 1.f) / 2.f;
+      float centerY = ((float) cloud->height - 1.f) / 2.f;
 
       if (pcl_isfinite(camSettings.focalLengthX))
-        constant_x = 1.0f / camSettings.focalLengthX;
+        constant_x = 1.0f / static_cast<float> (camSettings.focalLengthX);
 
       if (pcl_isfinite(camSettings.focalLengthY))
-        constant_y = 1.0f / camSettings.focalLengthY;
+        constant_y = 1.0f / static_cast<float> (camSettings.focalLengthY);
 
       if (pcl_isfinite(camSettings.principalPointX))
-        centerX = camSettings.principalPointX;
+        centerX = static_cast<float> (camSettings.principalPointX);
 
       if (pcl_isfinite(camSettings.principalPointY))
-        centerY = camSettings.principalPointY;
+        centerY = static_cast<float> (camSettings.principalPointY);
 
+      //TODO if depth not registered, use rgb frame id
       cloud->header.frame_id = frameId;
 
       float bad_point = std::numeric_limits<float>::quiet_NaN();
 
-      register int depth_idx = 0;
+      int depth_idx = 0;
       for (int v = 0; v < camSettings.height; ++v)
       {
         for (register int u = 0; u < camSettings.width; ++u, ++depth_idx)
@@ -218,7 +243,6 @@ namespace pcl
     }
     else if (mode_ == NetGrabber::Server)
     {
-      waitForClient(server_);
       serverThread_ = boost::shared_ptr<boost::thread>(new boost::thread(boost::bind(&NetGrabber::serverLoop, this)));
     }
 
@@ -227,12 +251,13 @@ namespace pcl
 
   int NetGrabber::serverLoop()
   {
+    waitForClient(netVars_);
     int frameId = 0;
     while (running_)
     {
       unsigned compressedLength;
       std::vector<unsigned char> compressed;
-      int error = serverReadOnce(server_->socket, compressedLength, cameraParameters_, compressed);
+      int error = serverReadOnce(netVars_->socket, compressedLength, cameraParameters_, compressed);
       if (error != 0)
         return error;
       cout << "Compressed length: " << compressedLength << endl;
@@ -240,7 +265,9 @@ namespace pcl
       vector<unsigned short> decompressed;
       fringeCompression_.decodePixels(compressedLength, cameraParameters_, compressed, decompressed);
       PointCloud<pcl::PointXYZ>::Ptr pointCloud = convertToXYZPointCloud(cameraParameters_, decompressed, frameId++);
-      point_cloud_signal_->operator ()(pointCloud);
+      int numImageSlots = point_cloud_signal_->num_slots();
+      if (numImageSlots > 0)
+        point_cloud_signal_->operator ()(pointCloud);
     }
 
     return 0;
@@ -296,7 +323,7 @@ namespace pcl
         device_->stop();
       }
 
-      clientSocket_->close();
+      netVars_->socket->close();
     }
     else
     {
@@ -320,7 +347,7 @@ namespace pcl
 
   }
 
-  void NetGrabber::waitForClient(boost::shared_ptr<NetGrabber::ServerParameters> server)
+  void NetGrabber::waitForClient(boost::shared_ptr<NetGrabber::NetworkParameters> server)
   {
     server->acceptor->accept(*(server->socket));
   }
@@ -332,7 +359,7 @@ namespace pcl
     unsigned compressedLength
     )
   {
-    if (compressedLength > 0)
+    if (connectedToServer_ && compressedLength > 0)
     {
       boost::asio::write(*socket, boost::asio::buffer(buffer, compressedLength * sizeof (unsigned char)));
     }
@@ -361,7 +388,7 @@ namespace pcl
     )
   {
       OpenNICameraParameters parameters;
-      getOpenNICameraParameters(parameters, boost::dynamic_pointer_cast<OpenNIGrabber>(device_));
+      getOpenNICameraParameters(parameters, boost::dynamic_pointer_cast<OpenNIGrabber>(device_), depthImage);
 
       unsigned compressedLength;
       vector<unsigned char> compressed;
@@ -376,27 +403,36 @@ namespace pcl
 
       sendCompressedBuffer
         (
-        clientSocket_,
+        netVars_->socket,
         compressed,
         compressedLength
         );
   }
 
-  void NetGrabber::getOpenNICameraParameters(OpenNICameraParameters& parameters, boost::shared_ptr<OpenNIGrabber> openNIGrabber)
+  void NetGrabber::getOpenNICameraParameters
+    (
+    OpenNICameraParameters& parameters,
+    boost::shared_ptr<OpenNIGrabber> openNIGrabber,
+    const boost::shared_ptr<DepthImage>& depthImage
+    )
   {
     boost::shared_ptr<OpenNIDevice> openNIDevice = openNIGrabber->getDevice();
 #ifdef HAVE_OPENNI
     openNIGrabber->getImageDimentions(parameters.width, parameters.height);
+    parameters.depthFocalLengthX = openNIDevice->getDepthFocalLength(parameters.width);
+    parameters.depthFocalLengthY = openNIDevice->getDepthFocalLength(parameters.height);
 #endif
 
 #ifdef HAVE_OPENNI2
     const pcl::io::openni2::OpenNI2VideoMode videoMode = openNIDevice->getDepthVideoMode();
     parameters.width = videoMode.x_resolution_;
     parameters.height = videoMode.y_resolution_;
+    parameters.depthFocalLengthX = openNIDevice->getDepthFocalLength();
+    parameters.depthFocalLengthY = openNIDevice->getDepthFocalLength();
 #endif
-
-    parameters.depthFocalLengthX = openNIDevice->getDepthFocalLength(parameters.width);
-    parameters.depthFocalLengthY = openNIDevice->getDepthFocalLength(parameters.height);
+    
+    parameters.noSampleValue = depthImage->getNoSampleValue();
+    parameters.shadowValue = depthImage->getShadowValue();
     openNIGrabber->getDepthCameraIntrinsics(parameters.focalLengthX, parameters.focalLengthY, parameters.principalPointX, parameters.principalPointY);
     parameters.fps = openNIGrabber->getFramesPerSecond();
 

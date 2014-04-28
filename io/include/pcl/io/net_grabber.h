@@ -83,10 +83,10 @@ namespace pcl
     } Mode;
 
     //define callback signature typedefs
-    typedef void (sig_cb_openni_point_cloud)(const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZ> >&);
-    typedef void (sig_cb_openni_point_cloud_rgb)(const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGB> >&);
-    typedef void (sig_cb_openni_point_cloud_rgba)(const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&);
-    typedef void (sig_cb_openni_point_cloud_i)(const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZI> >&);
+    typedef void (sig_cb_point_cloud) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZ> >&);
+    typedef void (sig_cb_point_cloud_rgb) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGB> >&);
+    typedef void (sig_cb_point_cloud_rgba) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&);
+    typedef void (sig_cb_point_cloud_i) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZI> >&);
 
   public:
     /** \brief Constructor for client configuration
@@ -134,16 +134,18 @@ namespace pcl
     void setCompressionParameter(int compressionParameter);
 
   protected:
-    struct ServerParameters
+    struct NetworkParameters
     {
       boost::shared_ptr<boost::asio::io_service> io_service;
+      boost::shared_ptr<tcp::resolver> resolver;
+      boost::shared_ptr<tcp::resolver::query> query;
       boost::shared_ptr<tcp::endpoint> endpoint;
       boost::shared_ptr<tcp::socket> socket;
       boost::shared_ptr<tcp::acceptor> acceptor;
     };
 
     /** \brief Sets up the client to talk to a sever at a given address on a given port. */
-    void
+    bool
       onInit(boost::shared_ptr<Grabber> grabber, int port, const string& severAddress);
 
     /** \brief Sets up the sever on a given port. */
@@ -154,9 +156,12 @@ namespace pcl
     virtual void
       signalsChanged();
 
+    inline bool
+      isConnectedToServer() { return connectedToServer_; }
+
     // helper methods
 
-    void waitForClient(boost::shared_ptr<NetGrabber::ServerParameters> server);
+    void waitForClient(boost::shared_ptr<NetGrabber::NetworkParameters> server);
 
 #ifdef HAVE_OPENNI
     typedef openni_wrapper::DepthImage DepthImage;
@@ -184,7 +189,12 @@ namespace pcl
       float focalLength
       );
 
-    void getOpenNICameraParameters(OpenNICameraParameters& parameters, boost::shared_ptr<OpenNIGrabber> openNIGrabber);
+    void getOpenNICameraParameters
+      (
+      OpenNICameraParameters& parameters,
+      boost::shared_ptr<OpenNIGrabber> openNIGrabber,
+      const boost::shared_ptr<DepthImage>& depthImage
+      );
 
     void encodeDepthImage
       (
@@ -253,14 +263,16 @@ namespace pcl
     /** \brief The actual grabber. */
     boost::shared_ptr<Grabber> device_;
 
-    boost::signals2::signal<sig_cb_openni_point_cloud>* point_cloud_signal_;
-    boost::signals2::signal<sig_cb_openni_point_cloud_i>* point_cloud_i_signal_;
-    boost::signals2::signal<sig_cb_openni_point_cloud_rgb>* point_cloud_rgb_signal_;
-    boost::signals2::signal<sig_cb_openni_point_cloud_rgba>* point_cloud_rgba_signal_;
+    boost::signals2::signal<sig_cb_point_cloud>* point_cloud_signal_;
+    boost::signals2::signal<sig_cb_point_cloud_i>* point_cloud_i_signal_;
+    boost::signals2::signal<sig_cb_point_cloud_rgb>* point_cloud_rgb_signal_;
+    boost::signals2::signal<sig_cb_point_cloud_rgba>* point_cloud_rgba_signal_;
 
     int compressionParameter_;
 
     bool running_;
+
+    bool connectedToServer_;
 
     int port_;
 
@@ -268,7 +280,7 @@ namespace pcl
 
     string serverAddress_;
 
-    boost::shared_ptr<ServerParameters> server_;
+    boost::shared_ptr<NetworkParameters> netVars_;
 
     boost::shared_ptr<tcp::socket> clientSocket_;
 

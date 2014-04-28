@@ -54,7 +54,7 @@ namespace pcl
 	class FringeCompression
 	{
 	public:
-		FringeCompression();
+    FringeCompression(string lutFileName = "lut");
 
 		void encodePixels
 			(
@@ -103,8 +103,8 @@ namespace pcl
 			(
 			string fileName,
 			int* & lut,
-			int & columns,
-			int & rows
+			unsigned & columns,
+      unsigned & rows
 			);
 
 		void printCompressedLength
@@ -125,6 +125,7 @@ namespace pcl
 
 		unsigned getHeaderSize();
 
+    string lutFileName_;
 		unsigned short* pixelCopy_;
 		int *lut_;
 		bool wroteLut_;

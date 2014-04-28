@@ -55,10 +55,13 @@ using boost::asio::ip::tcp;
 
 namespace pcl
 {
-	FringeCompression::FringeCompression()
+	FringeCompression::FringeCompression(string lutFileName)
 	{
 		pixelCopy_ = NULL;
-		wroteLut_ = false;
+		wroteLut_ = true;
+    lut_ = NULL;
+    pixelCopy_ = NULL;
+    lutFileName_ = lutFileName;
 	}
 
 	unsigned FringeCompression::getHeaderSize()
@@ -119,6 +122,8 @@ namespace pcl
 
 		deflateKinectData(pixelChars, dataLen, &(compressed[0]) + headerSize, compressedBufferLen, encodeParam, compressedLength);
 		byte_ptr compressedLenC = (byte_ptr) (&(compressedLength));
+
+    cout << "Uncompressed size: " << dataLen << " " << "compressed size: " << compressedLength << "headersize: " << headerSize << endl;
 
 		for (int i = 0; i < 4; i++)
 		{
@@ -217,7 +222,14 @@ namespace pcl
 			dataLen++;
 		}
 
-		dataLen *= 2;
+		dataLen *= 2; //short to chars
+
+
+    if (!wroteLut_)
+    {
+      writeLUT(lutFileName_, lut_, columns, rows);
+    }
+
 		return pixelCopy_;
 	}
 
@@ -308,6 +320,9 @@ namespace pcl
 		return val;
 	}
 
+  /**
+   * Note: compressed vector does not include header
+   */
 	void FringeCompression::decodePixels
 		(
 		unsigned compressedLength,
@@ -316,13 +331,17 @@ namespace pcl
 		vector<unsigned short>& decompressed
 		)
 	{
+    if (lut_ == NULL)
+    {
+      readLUT(lutFileName_, lut_, parameters.width, parameters.height);
+    }
+
 		unsigned imgSize = parameters.height*parameters.width;
 		decompressed.resize(imgSize);
 		unsigned decompressedBufferSize = imgSize * 2;
 		unsigned char* decompressedChars = new unsigned char[decompressedBufferSize];
 		unsigned decompressedLen;
-		unsigned headerSize = getHeaderSize();
-		unsigned char * compressed_ptr = &(compressed[headerSize]);
+		unsigned char * compressed_ptr = &(compressed[0]);
 		inflateKinectData(compressed_ptr, compressedLength, decompressedChars, decompressedBufferSize, decompressedLen);
 		cout << "Decompressed Length: " << decompressedLen << " Predicated: " << decompressedBufferSize << endl;
 
@@ -339,8 +358,8 @@ namespace pcl
 		(
 		string fileName,
 		int* & lut,
-		int & columns,
-		int & rows
+		unsigned int & columns,
+		unsigned int & rows
 		)
 	{
 		FILE * pFile;
@@ -351,6 +370,7 @@ namespace pcl
 		fopen_s(&pFile, fileName.c_str(), "rb");
 #else
 		pFile = fopen(fileName.c_str(), "rb");
+    perror("fopen");
 #endif
 
 		if (pFile == NULL)
@@ -378,13 +398,15 @@ namespace pcl
 			cout << "Lut size not correct.  Expecting: " << (2 + rows*columns)*sizeof(int) << " Got: " << lSize << endl;
 		}
 
-		// allocate memory to contain the whole file:
-		lut = (int*) malloc(sizeof(char) * (rows*columns));
-		if (lut == NULL) { fputs("Memory error", stderr); exit(2); }
+    lSize -= 2 * sizeof(int);
 
-		// copy the file into the buffer:
-		result = fread(lut, sizeof(int), lSize / sizeof(int), pFile);
-		if ((result + 2)*sizeof(int) != lSize)
+		// allocate memory to contain the whole file:
+    lut = new int[lSize / sizeof(int)];
+    
+		if (lut == NULL) { fputs("Memory error", stderr); exit(2); }
+    result = fread(lut, sizeof(int), lSize / sizeof(int), pFile);
+
+    if (result*sizeof(int) != lSize)
 		{
 			cout << "Lut Read size not correct.  Expecting: " << (2 + rows*columns)*sizeof(int) << " Got: " << result << endl;
 			exit(3);

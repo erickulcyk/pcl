@@ -52,8 +52,8 @@ namespace pcl
     double focalLengthY;
     double principalPointX;
     double principalPointY;
-		float shadowValue;
-		float noSampleValue;
+		uint64_t shadowValue;
+    uint64_t noSampleValue;
 	};
 }
 #endif //__PCL_IO_OPENNI_CAMERA_PARAMETERS__
