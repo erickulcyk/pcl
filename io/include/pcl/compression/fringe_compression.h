@@ -70,7 +70,7 @@ namespace pcl
 			unsigned compressedLength,
 			OpenNICameraParameters parameters,
 			vector<unsigned char>& compressed,
-			vector<const unsigned short>& decompressed
+			vector<unsigned short>& decompressed
 			);
 
 	protected:

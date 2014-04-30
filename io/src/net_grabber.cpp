@@ -174,7 +174,7 @@ namespace pcl
     NetGrabber::convertToXYZPointCloud
     (
     const OpenNICameraParameters & camSettings,
-    const vector<const unsigned short>& depthBuffer,
+    const vector<unsigned short>& depthBuffer,
     int frameId
     ) const
   {
@@ -267,7 +267,7 @@ namespace pcl
         return error;
       cout << "Compressed length: " << compressedLength << endl;
 
-      vector<const unsigned short> decompressed;
+      vector<unsigned short> decompressed;
       fringeCompression_.decodePixels(compressedLength, cameraParameters_, compressed, decompressed);
 
       int numPointCloudSlots = point_cloud_signal_->num_slots();
@@ -282,7 +282,7 @@ namespace pcl
       {
           depth_image_signal_->operator ()
           (
-          boost::make_shared<const vector<const unsigned short> > (decompressed),
+          boost::make_shared<const vector<unsigned short> > (decompressed),
           boost::make_shared<const pcl::OpenNICameraParameters> (cameraParameters_)
           );
       }

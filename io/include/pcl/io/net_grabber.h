@@ -89,7 +89,7 @@ namespace pcl
     typedef void (sig_cb_point_cloud_i) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZI> >&);
     typedef void (sig_cb_depth_image)
       (
-      const boost::shared_ptr<const vector<const unsigned short> >&,
+      const boost::shared_ptr<const vector<unsigned short> >&,
       const boost::shared_ptr<const OpenNICameraParameters>&
       );
 
@@ -225,7 +225,7 @@ namespace pcl
       convertToXYZPointCloud
       (
       const OpenNICameraParameters & camSettings,
-      const vector<const unsigned short> & depthBuffer,
+      const vector<unsigned short> & depthBuffer,
       int frameId
       ) const;
 
