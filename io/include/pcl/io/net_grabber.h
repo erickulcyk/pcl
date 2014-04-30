@@ -87,6 +87,11 @@ namespace pcl
     typedef void (sig_cb_point_cloud_rgb) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGB> >&);
     typedef void (sig_cb_point_cloud_rgba) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&);
     typedef void (sig_cb_point_cloud_i) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZI> >&);
+    typedef void (sig_cb_depth_image)
+      (
+      const boost::shared_ptr<const vector<const unsigned short> >&,
+      const boost::shared_ptr<const OpenNICameraParameters>&
+      );
 
   public:
     /** \brief Constructor for client configuration
@@ -206,14 +211,6 @@ namespace pcl
       );
 #endif
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr
-      decodeXYZPointCloud
-      (
-      unsigned compressedLength,
-      OpenNICameraParameters& parameters,
-      vector<unsigned char>& compressed
-      );
-
     void sendCompressedBuffer
       (
       boost::shared_ptr<tcp::socket> socket,
@@ -228,7 +225,7 @@ namespace pcl
       convertToXYZPointCloud
       (
       const OpenNICameraParameters & camSettings,
-      const vector<unsigned short> & depthBuffer,
+      const vector<const unsigned short> & depthBuffer,
       int frameId
       ) const;
 
@@ -267,6 +264,7 @@ namespace pcl
     boost::signals2::signal<sig_cb_point_cloud_i>* point_cloud_i_signal_;
     boost::signals2::signal<sig_cb_point_cloud_rgb>* point_cloud_rgb_signal_;
     boost::signals2::signal<sig_cb_point_cloud_rgba>* point_cloud_rgba_signal_;
+    boost::signals2::signal<sig_cb_depth_image>* depth_image_signal_;
 
     int compressionParameter_;
 

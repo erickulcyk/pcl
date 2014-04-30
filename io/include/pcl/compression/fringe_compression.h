@@ -70,7 +70,7 @@ namespace pcl
 			unsigned compressedLength,
 			OpenNICameraParameters parameters,
 			vector<unsigned char>& compressed,
-			vector<unsigned short>& decompressed
+			vector<const unsigned short>& decompressed
 			);
 
 	protected:
@@ -103,8 +103,8 @@ namespace pcl
 			(
 			string fileName,
 			int* & lut,
-			unsigned & columns,
-      unsigned & rows
+			int & columns,
+      int & rows
 			);
 
 		void printCompressedLength

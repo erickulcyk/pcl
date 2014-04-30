@@ -44,8 +44,8 @@ namespace pcl
 	struct OpenNICameraParameters
 	{
 		float fps;
-		unsigned width;
-		unsigned height;
+		int width;
+    int height;
 		float depthFocalLengthX;
 		float depthFocalLengthY;
 		double focalLengthX;

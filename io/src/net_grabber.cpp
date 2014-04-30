@@ -43,6 +43,7 @@
 #include <iostream>
 #include <pcl/exceptions.h>
 #include <exception>
+#include <boost/make_shared.hpp>
 //#include <boost/pointer_cast.hpp>
 
 using std::cout;
@@ -58,6 +59,7 @@ namespace pcl
     , netVars_()
     , clientSocket_()
     , point_cloud_signal_(), point_cloud_i_signal_(), point_cloud_rgb_signal_(), point_cloud_rgba_signal_()
+    , depth_image_signal_()
     , running_(false)
     , compressionParameter_(-1)
   {
@@ -65,6 +67,7 @@ namespace pcl
     point_cloud_rgb_signal_ = createSignal<sig_cb_point_cloud_rgb>();
     point_cloud_i_signal_ = createSignal<sig_cb_point_cloud_i>();
     point_cloud_rgba_signal_ = createSignal<sig_cb_point_cloud_rgba>();
+    depth_image_signal_ = createSignal<sig_cb_depth_image>();
 
     onInit(grabber, port, severAddress);
 
@@ -107,6 +110,7 @@ namespace pcl
     , netVars_()
     , clientSocket_()
     , point_cloud_signal_(), point_cloud_i_signal_(), point_cloud_rgb_signal_(), point_cloud_rgba_signal_()
+    , depth_image_signal_()
     , running_(false)
     , compressionParameter_(-1)
   {
@@ -114,6 +118,7 @@ namespace pcl
     point_cloud_rgb_signal_ = createSignal<sig_cb_point_cloud_rgb>();
     point_cloud_i_signal_ = createSignal<sig_cb_point_cloud_i>();
     point_cloud_rgba_signal_ = createSignal<sig_cb_point_cloud_rgba>();
+    depth_image_signal_ = createSignal<sig_cb_depth_image>();
 
     onInit(port);
   }
@@ -169,7 +174,7 @@ namespace pcl
     NetGrabber::convertToXYZPointCloud
     (
     const OpenNICameraParameters & camSettings,
-    const vector<unsigned short>& depthBuffer,
+    const vector<const unsigned short>& depthBuffer,
     int frameId
     ) const
   {
@@ -262,12 +267,27 @@ namespace pcl
         return error;
       cout << "Compressed length: " << compressedLength << endl;
 
-      vector<unsigned short> decompressed;
+      vector<const unsigned short> decompressed;
       fringeCompression_.decodePixels(compressedLength, cameraParameters_, compressed, decompressed);
-      PointCloud<pcl::PointXYZ>::Ptr pointCloud = convertToXYZPointCloud(cameraParameters_, decompressed, frameId++);
-      int numImageSlots = point_cloud_signal_->num_slots();
-      if (numImageSlots > 0)
+
+      int numPointCloudSlots = point_cloud_signal_->num_slots();
+      if (numPointCloudSlots > 0)
+      {
+        PointCloud<pcl::PointXYZ>::Ptr pointCloud = convertToXYZPointCloud(cameraParameters_, decompressed, frameId);
         point_cloud_signal_->operator ()(pointCloud);
+      }
+
+      int numDepthSlots = depth_image_signal_->num_slots();
+      if (numDepthSlots > 0)
+      {
+          depth_image_signal_->operator ()
+          (
+          boost::make_shared<const vector<const unsigned short> > (decompressed),
+          boost::make_shared<const pcl::OpenNICameraParameters> (cameraParameters_)
+          );
+      }
+
+      frameId++;
     }
 
     return 0;
@@ -363,20 +383,6 @@ namespace pcl
     {
       boost::asio::write(*socket, boost::asio::buffer(buffer, compressedLength * sizeof (unsigned char)));
     }
-  }
-
-  pcl::PointCloud<pcl::PointXYZ>::Ptr
-    NetGrabber::decodeXYZPointCloud
-    (
-    unsigned compressedLength,
-    OpenNICameraParameters& parameters,
-    vector<unsigned char>& compressed
-    )
-  {
-      vector<unsigned short> decompressed;
-      fringeCompression_.decodePixels(compressedLength, parameters, compressed, decompressed);
-      auto pointCloud = convertToXYZPointCloud(parameters, decompressed, -1);
-      return pointCloud;
   }
 
 #if defined HAVE_OPENNI || defined HAVE_OPENNI2

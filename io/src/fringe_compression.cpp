@@ -328,7 +328,7 @@ namespace pcl
 		unsigned compressedLength,
 		OpenNICameraParameters parameters,
 		vector<unsigned char>& compressed,
-		vector<unsigned short>& decompressed
+		vector<const unsigned short>& decompressed
 		)
 	{
     if (lut_ == NULL)
@@ -358,8 +358,8 @@ namespace pcl
 		(
 		string fileName,
 		int* & lut,
-		unsigned int & columns,
-		unsigned int & rows
+		int & columns,
+		int & rows
 		)
 	{
 		FILE * pFile;
