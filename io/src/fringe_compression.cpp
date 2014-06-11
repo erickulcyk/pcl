@@ -120,7 +120,7 @@ namespace pcl
 			compressed.resize(compressedBufferLen + headerSize);
 		}
 
-		deflateKinectData(pixelChars, dataLen, &(compressed[0]) + headerSize, compressedBufferLen, encodeParam, compressedLength);
+		deflateData(pixelChars, dataLen, &(compressed[0]) + headerSize, compressedBufferLen, encodeParam, compressedLength);
 		byte_ptr compressedLenC = (byte_ptr) (&(compressedLength));
 
     cout << "Uncompressed size: " << dataLen << " " << "compressed size: " << compressedLength << "headersize: " << headerSize << endl;
@@ -342,7 +342,7 @@ namespace pcl
 		unsigned char* decompressedChars = new unsigned char[decompressedBufferSize];
 		unsigned decompressedLen;
 		unsigned char * compressed_ptr = &(compressed[0]);
-		inflateKinectData(compressed_ptr, compressedLength, decompressedChars, decompressedBufferSize, decompressedLen);
+		inflateData(compressed_ptr, compressedLength, decompressedChars, decompressedBufferSize, decompressedLen);
 		cout << "Decompressed Length: " << decompressedLen << " Predicated: " << decompressedBufferSize << endl;
 
 		unsigned short *decomShort = (unsigned short *) decompressedChars;
@@ -414,4 +414,79 @@ namespace pcl
 
 		fclose(pFile);
 	}
+
+  unsigned FringeCompression::readDataId
+    (
+    const void* data
+    )
+  {
+    unsigned * uSource = (unsigned*) data;
+    return uSource[0];
+  }
+
+  void FringeCompression::encodeData
+    (
+    const void* data,
+    const int dataSize,
+    const int dataElements,
+    const unsigned dataId,
+    unsigned &headerSize,
+    unsigned &compressedLength,
+    vector<unsigned char> &compressed,
+    int level
+    )
+  {
+    headerSize = 4*sizeof(unsigned)/sizeof(char);
+    byte * source = (byte*) data;
+    unsigned sourceLength = dataSize*dataElements / sizeof(byte);
+    compressed.resize(sourceLength + headerSize);
+    byte * dest = &compressed[headerSize];
+
+    deflateData
+      (
+      source,
+      sourceLength,
+      dest,
+      sourceLength,
+      level,
+      compressedLength
+      );
+
+    unsigned * uSource = (unsigned*) &compressed[0];
+    uSource[0] = compressedLength;
+    uSource[1] = 2; //the following two bytes compresize the remaining header size.
+    uSource[2] = dataId;
+    uSource[3] = sourceLength;
+  }
+
+  void FringeCompression::decodeData
+    (
+    const void* data,
+    const int dataSize,
+    const int dataElements,
+    unsigned &dataId,
+    unsigned &decompressedLength,
+    vector<unsigned char> &decompressed
+    )
+  {
+    int headerSize = 2 * sizeof(unsigned) / sizeof(byte); //header is smaller because it doesn't contain compressed length, assumed to be read earlier
+    byte * source = (byte*) data;
+    source += headerSize;
+    unsigned * uSource = (unsigned*) data;
+    unsigned expectedLength = uSource[1];
+    dataId = uSource[0];
+
+    unsigned sourceLength = dataSize*dataElements / sizeof(byte);
+    decompressed.resize(expectedLength);
+    byte * dest = &decompressed[0];
+
+    inflateData
+      (
+      source,
+      sourceLength,
+      dest,
+      expectedLength,
+      decompressedLength
+      );
+  }
 }

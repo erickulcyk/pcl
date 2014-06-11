@@ -73,6 +73,30 @@ namespace pcl
 			vector<unsigned short>& decompressed
 			);
 
+    unsigned FringeCompression::readDataId(const void * data);
+
+    void encodeData
+      (
+      const void* data,
+      const int dataSize,
+      const int dataElements,
+      const unsigned dataId,
+      unsigned &headerSize,
+      unsigned &compressedLength,
+      vector<unsigned char> &compressed,
+      int level
+      );
+
+    void decodeData
+      (
+      const void* data,
+      const int dataSize,
+      const int dataElements,
+      unsigned &dataId,
+      unsigned &decompressedLength,
+      vector<unsigned char> &decompressed
+      );
+
 	protected:
 		int getMeanValue
 			(

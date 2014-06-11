@@ -50,6 +50,7 @@
 //#include <deque>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/PolygonMesh.h>
 //#include <pcl/common/synchronizer.h>
 
 #include <pcl/io/openni_camera_parameters.h>
@@ -82,6 +83,12 @@ namespace pcl
       Server = 1
     } Mode;
 
+    typedef enum
+    {
+      PointCloudData,
+      VerticesData
+    } DataId;
+
     //define callback signature typedefs
     typedef void (sig_cb_point_cloud) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZ> >&);
     typedef void (sig_cb_point_cloud_rgb) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGB> >&);
@@ -92,6 +99,7 @@ namespace pcl
       const boost::shared_ptr<const vector<unsigned short> >&,
       const boost::shared_ptr<const OpenNICameraParameters>&
       );
+    typedef void (sig_cb_vertices)(const boost::shared_ptr<vector<pcl::Vertices> >&);
 
   public:
     /** \brief Constructor for client configuration
@@ -104,10 +112,12 @@ namespace pcl
       const string& severAddress = ""
       );
 
+    NetGrabber(int port, const string& severAddress);
+
     /** \brief Constructor for server configuration
      *  \param[in] the port to listen on.
      */
-    NetGrabber(int port);
+    NetGrabber(int port, bool readClient);
 
     /** \brief virtual Destructor inherited from the Grabber interface. It never throws. */
     virtual ~NetGrabber() throw ();
@@ -138,6 +148,12 @@ namespace pcl
 
     void setCompressionParameter(int compressionParameter);
 
+    void NetGrabber::sendToClient(std::vector<pcl::Vertices> &verts);
+    void NetGrabber::sendToClient(pcl::PointCloud<PointXYZRGB> &cloud);
+
+    inline bool
+      isConnectedToServer() { return connectedToServer_; }
+
   protected:
     struct NetworkParameters
     {
@@ -150,8 +166,8 @@ namespace pcl
     };
 
     /** \brief Sets up the client to talk to a sever at a given address on a given port. */
-    bool
-      onInit(boost::shared_ptr<Grabber> grabber, int port, const string& severAddress);
+    void
+      onInit(int port, const string& severAddress);
 
     /** \brief Sets up the sever on a given port. */
     void
@@ -161,12 +177,11 @@ namespace pcl
     virtual void
       signalsChanged();
 
-    inline bool
-      isConnectedToServer() { return connectedToServer_; }
-
     // helper methods
 
     void waitForClient(boost::shared_ptr<NetGrabber::NetworkParameters> server);
+
+    void runIOService();
 
 #ifdef HAVE_OPENNI
     typedef openni_wrapper::DepthImage DepthImage;
@@ -218,6 +233,13 @@ namespace pcl
       unsigned compressedLength
       );
 
+    void NetGrabber::sendCompressedBuffer
+      (
+      boost::shared_ptr<tcp::socket> socket,
+      vector<int>& buffer,
+      unsigned compressedLength
+      );
+
     /** \brief Convert a Depth image to a pcl::PointCloud<pcl::PointXYZ>
       * \param[in] depth the depth image to convert
       */
@@ -239,24 +261,13 @@ namespace pcl
 
     int serverLoop();
 
-    /** \brief Convert a Depth + RGB image pair to a pcl::PointCloud<PointT>
-      * \param[in] image the RGB image to convert
-      * \param[in] depth_image the depth image to convert
-      */
-    /*
-  template <typename PointT> typename pcl::PointCloud<PointT>::Ptr
-  convertToXYZRGBPointCloud (const boost::shared_ptr<openni_wrapper::Image> &image,
-  const boost::shared_ptr<openni_wrapper::DepthImage> &depth_image) const;
-  */
-    /** \brief Convert a Depth + Intensity image pair to a pcl::PointCloud<pcl::PointXYZI>
-      * \param[in] image the IR image to convert
-      * \param[in] depth_image the depth image to convert
-      */
-    /*
-  boost::shared_ptr<pcl::PointCloud<pcl::PointXYZI> >
-  convertToXYZIPointCloud (const boost::shared_ptr<openni_wrapper::IRImage> &image,
-  const boost::shared_ptr<openni_wrapper::DepthImage> &depth_image) const;
-  */
+    void clientReadHandler(const boost::system::error_code &ec, std::size_t bytesTransferred);
+    void clientResolveHandler(const boost::system::error_code &ec, tcp::resolver::iterator it);
+    void clientConnectHandler(const boost::system::error_code &ec);
+
+    vector<unsigned> clientReadLengthBuffer_;
+    vector<char> clientReadDataBuffer_;
+  
     /** \brief The actual grabber. */
     boost::shared_ptr<Grabber> device_;
 
@@ -265,6 +276,7 @@ namespace pcl
     boost::signals2::signal<sig_cb_point_cloud_rgb>* point_cloud_rgb_signal_;
     boost::signals2::signal<sig_cb_point_cloud_rgba>* point_cloud_rgba_signal_;
     boost::signals2::signal<sig_cb_depth_image>* depth_image_signal_;
+    boost::signals2::signal<sig_cb_vertices>* point_cloud_vertices_signal_;
 
     int compressionParameter_;
 
@@ -284,9 +296,15 @@ namespace pcl
 
     FringeCompression fringeCompression_;
 
-    boost::shared_ptr<boost::thread> serverThread_;
+    boost::shared_ptr<boost::thread> ioThread_;
 
     OpenNICameraParameters cameraParameters_;
+
+    int count_;
+
+    bool useGrabber_;
+
+    bool readClient_;
 
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW

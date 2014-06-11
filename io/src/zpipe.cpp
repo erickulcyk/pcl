@@ -28,7 +28,7 @@
 
 #define CHUNK (640*480)
 
-int deflateKinectData
+int deflateData
 (
 	byte *source,
 	unsigned srcLen,
@@ -76,7 +76,7 @@ int deflateKinectData
     return Z_OK;
 }
 
-int inflateKinectData
+int inflateData
 (
 	byte *source,
 	unsigned srcLen,

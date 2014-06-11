@@ -5,7 +5,7 @@
 
 typedef unsigned char byte;
 
-int deflateKinectData
+int deflateData
 (
 byte *source,
 unsigned srcLen,
@@ -15,7 +15,7 @@ int level,
 unsigned & compressedLen
 );
 
-int inflateKinectData
+int inflateData
 (
 z_const byte *source,
 unsigned srcLen,
