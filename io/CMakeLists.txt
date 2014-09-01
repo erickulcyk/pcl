@@ -20,7 +20,6 @@ if(build)
     include/pcl/io/image_yuv422.h
     include/pcl/io/image_ir.h
     include/pcl/io/image_depth.h
-    include/pcl/io/io_exception.h
   )
 
   set(IMAGE_SOURCES
@@ -28,7 +27,6 @@ if(build)
     src/image_yuv422.cpp
     src/image_ir.cpp
     src/image_depth.cpp
-    src/io_exception.cpp
   )
 
     ## OpenNI 2.x
@@ -166,7 +164,6 @@ if(build)
            )
         set(VTK_IO_INCLUDES_IMPL
             "include/pcl/${SUBSYS_NAME}/impl/vtk_lib_io.hpp"
-            "include/pcl/${SUBSYS_NAME}/impl/png_io.hpp"
            )
         set(VTK_IO_SOURCE
             src/vtk_lib_io.cpp
@@ -209,6 +206,8 @@ if(build)
 	src/net_session.cpp
 	src/fringe_compression.cpp
 	src/zpipe.cpp
+        src/file_io.cpp
+        src/io_exception.cpp
         ${VTK_IO_SOURCE}
         ${OPENNI_GRABBER_SOURCES}
         ${OPENNI2_GRABBER_SOURCES}
@@ -216,7 +215,6 @@ if(build)
         ${DINAST_GRABBER_SOURCES}
         ${FZAPI_GRABBER_SOURCES}
         ${PXC_GRABBER_SOURCES}
-        src/file_io.cpp
         )
     if(PNG_FOUND)
       list(APPEND srcs
@@ -259,6 +257,7 @@ if(build)
 	"include/pcl/${SUBSYS_NAME}/net_session.h"
 	"include/pcl/${SUBSYS_NAME}/net_state.h"
         "include/pcl/${SUBSYS_NAME}/point_cloud_image_extractors.h"
+        "include/pcl/${SUBSYS_NAME}/io_exception.h"
         ${VTK_IO_INCLUDES}
         ${OPENNI_GRABBER_INCLUDES}
         ${OPENNI2_GRABBER_INCLUDES}
@@ -310,7 +309,7 @@ if(build)
     add_definitions(${VTK_DEFINES})
     PCL_ADD_LIBRARY("${LIB_NAME}" "${SUBSYS_NAME}" ${srcs} ${incs} ${compression_incs} ${impl_incs} ${OPENNI_INCLUDES} ${OPENNI2_INCLUDES})
     link_directories(${VTK_LINK_DIRECTORIES})
-    target_link_libraries("${LIB_NAME}" pcl_common pcl_io_ply ${VTK_IO_TARGET_LINK_LIBRARIES} )
+    target_link_libraries("${LIB_NAME}" pcl_common pcl_io_ply ${VTK_LIBRARIES} )
     if(PNG_FOUND)
 	    target_link_libraries("${LIB_NAME}" "${PNG_LIBRARY}")
     endif(PNG_FOUND)
@@ -366,6 +365,8 @@ if(build)
     PCL_ADD_INCLUDES("${SUBSYS_NAME}" "${SUBSYS_NAME}/openni2" ${OPENNI2_INCLUDES})
     PCL_ADD_INCLUDES("${SUBSYS_NAME}" "${SUBSYS_NAME}/impl" ${impl_incs})
 
-    add_subdirectory(tools)
+    if(BUILD_tools)
+        add_subdirectory(tools)
+    endif(BUILD_tools)
 
 endif(build)
