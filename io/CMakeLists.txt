@@ -203,6 +203,10 @@ if(build)
         src/hdl_grabber.cpp
         src/robot_eye_grabber.cpp
 	src/net_grabber.cpp
+	src/net_server.cpp
+	src/net_client.cpp
+	src/net_participant.cpp
+	src/net_session.cpp
 	src/fringe_compression.cpp
 	src/zpipe.cpp
         ${VTK_IO_SOURCE}
@@ -248,6 +252,12 @@ if(build)
         "include/pcl/${SUBSYS_NAME}/hdl_grabber.h"
         "include/pcl/${SUBSYS_NAME}/robot_eye_grabber.h"
 	"include/pcl/${SUBSYS_NAME}/net_grabber.h"
+	"include/pcl/${SUBSYS_NAME}/net_server.h"
+	"include/pcl/${SUBSYS_NAME}/net_client.h"
+	"include/pcl/${SUBSYS_NAME}/net_message.h"
+	"include/pcl/${SUBSYS_NAME}/net_participant.h"
+	"include/pcl/${SUBSYS_NAME}/net_session.h"
+	"include/pcl/${SUBSYS_NAME}/net_state.h"
         "include/pcl/${SUBSYS_NAME}/point_cloud_image_extractors.h"
         ${VTK_IO_INCLUDES}
         ${OPENNI_GRABBER_INCLUDES}

@@ -44,6 +44,8 @@
 #include <pcl/exceptions.h>
 #include <exception>
 #include <boost/make_shared.hpp>
+#include <boost/enable_shared_from_this.hpp>
+#include <boost/asio.hpp>
 
 //#include <boost/pointer_cast.hpp>
 
@@ -61,11 +63,14 @@ namespace pcl
     , clientSocket_()
     , point_cloud_signal_(), point_cloud_i_signal_(), point_cloud_rgb_signal_(), point_cloud_rgba_signal_(), point_cloud_vertices_signal_()
     , depth_image_signal_()
+    , serverThread_()
     , running_(false)
     , compressionParameter_(-1)
     , count_(0)
     , useGrabber_(false)
     , readClient_(false)
+    , frameId_()
+    //, messageBuffer_()
   {
     point_cloud_signal_ = createSignal<sig_cb_point_cloud>();
     point_cloud_rgb_signal_ = createSignal<sig_cb_point_cloud_rgb>();
@@ -86,11 +91,14 @@ namespace pcl
     , clientSocket_()
     , point_cloud_signal_(), point_cloud_i_signal_(), point_cloud_rgb_signal_(), point_cloud_rgba_signal_(), point_cloud_vertices_signal_()
     , depth_image_signal_()
+    , serverThread_()
     , running_(false)
     , compressionParameter_(-1)
     , count_(0)
     , useGrabber_(true)
     , readClient_(false)
+    , frameId_()
+    //, messageBuffer_()
   {
     point_cloud_signal_ = createSignal<sig_cb_point_cloud>();
     point_cloud_rgb_signal_ = createSignal<sig_cb_point_cloud_rgb>();
@@ -141,11 +149,14 @@ namespace pcl
     , clientSocket_()
     , point_cloud_signal_(), point_cloud_i_signal_(), point_cloud_rgb_signal_(), point_cloud_rgba_signal_(), point_cloud_vertices_signal_()
     , depth_image_signal_()
+    , serverThread_()
     , running_(false)
     , compressionParameter_(-1)
     , count_(0)
     , useGrabber_(false)
     , readClient_(readClient)
+    , frameId_()
+    //, messageBuffer_()
   {
     point_cloud_signal_ = createSignal<sig_cb_point_cloud>();
     point_cloud_rgb_signal_ = createSignal<sig_cb_point_cloud_rgb>();
@@ -153,6 +164,16 @@ namespace pcl
     point_cloud_rgba_signal_ = createSignal<sig_cb_point_cloud_rgba>();
     depth_image_signal_ = createSignal<sig_cb_depth_image>();
     point_cloud_vertices_signal_ = createSignal<sig_cb_vertices>();
+    /*
+    try
+    {
+      NetServer a;
+      io_service.run();
+    }
+    catch (std::exception& e)
+    {
+      std::cerr << "Exception: " << e.what() << "\n";
+    }*/
 
     onInit(port);
   }
@@ -172,23 +193,16 @@ namespace pcl
 
   void NetGrabber::onInit(int port, const string& serverAddress)
   {
-    netVars_ = boost::shared_ptr<NetGrabber::NetworkParameters>(new NetGrabber::NetworkParameters());
-    netVars_->io_service = boost::shared_ptr<boost::asio::io_service>(new boost::asio::io_service);
-    netVars_->resolver = boost::shared_ptr<tcp::resolver>(new tcp::resolver(*(netVars_->io_service)));
+    netVars_ = boost::shared_ptr<NetState>(new NetState());
 
     std::string port_s = std::to_string(port);
     netVars_->query = boost::shared_ptr<tcp::resolver::query>(new tcp::resolver::query(serverAddress, port_s));
-    netVars_->socket = boost::shared_ptr<tcp::socket>(new tcp::socket(*netVars_->io_service));
-    netVars_->resolver->async_resolve(*netVars_->query, boost::bind(&NetGrabber::clientResolveHandler, this, _1, _2));
+    netVars_->resolver.async_resolve(*netVars_->query, boost::bind(&NetGrabber::clientResolveHandler, this, _1, _2));
   }
 
   void NetGrabber::onInit(int port)
   {
-    netVars_ = boost::shared_ptr<NetGrabber::NetworkParameters>(new NetGrabber::NetworkParameters());
-    netVars_->io_service = boost::shared_ptr<boost::asio::io_service>(new boost::asio::io_service);
-    netVars_->endpoint = boost::shared_ptr<tcp::endpoint>(new tcp::endpoint(tcp::v4(), port));
-    netVars_->acceptor = boost::shared_ptr<tcp::acceptor>(new tcp::acceptor(*netVars_->io_service, *netVars_->endpoint));
-    netVars_->socket = boost::shared_ptr<tcp::socket>(new tcp::socket(*netVars_->io_service));
+    netVars_ = boost::shared_ptr<NetState>(new NetState());
   }
 
   PointCloud<pcl::PointXYZ>::Ptr
@@ -260,10 +274,10 @@ namespace pcl
 
   void NetGrabber::start()
   {
+    ioThread_ = boost::shared_ptr<boost::thread>(new boost::thread(boost::bind(&NetGrabber::runIOService, this)));
+
     if (mode_ == NetGrabber::Client)
     {
-      ioThread_ = boost::shared_ptr<boost::thread>(new boost::thread(boost::bind(&NetGrabber::runIOService, this)));
-
       if (useGrabber_ && !device_->isRunning())
       {
         device_->start();
@@ -271,7 +285,8 @@ namespace pcl
     }
     else if (mode_ == NetGrabber::Server)
     {
-      ioThread_ = boost::shared_ptr<boost::thread>(new boost::thread(boost::bind(&NetGrabber::serverLoop, this)));
+      serverLoop();
+      //serverThread_ = boost::shared_ptr<boost::thread>(new boost::thread(boost::bind(&NetGrabber::serverLoop, this)));
     }
 
     running_ = true;
@@ -283,7 +298,7 @@ namespace pcl
     vector<unsigned char> compressed;
     int level = -1;
     unsigned headerSize;
-    
+
     this->fringeCompression_.encodeData
       (
       &verts[0],
@@ -295,12 +310,12 @@ namespace pcl
       compressed,
       level
       );
-      
+
     unsigned sizeBytes = compressedLength * sizeof(unsigned char) +headerSize;
-    
-      boost::asio::write
+
+    boost::asio::write
       (
-      *netVars_->socket,
+      netVars_->socket,
       boost::asio::buffer(compressed, sizeBytes)
       );
   }
@@ -320,17 +335,17 @@ namespace pcl
       NetGrabber::PointCloudData,
       headerSize,
       compressedLength,
-      compressed, 
+      compressed,
       level
       );
 
-    unsigned sizeBytes = compressedLength * sizeof(unsigned char) + headerSize;
+    unsigned sizeBytes = compressedLength * sizeof(unsigned char) +headerSize;
 
     try
     {
       boost::asio::write
         (
-        *netVars_->socket,
+        netVars_->socket,
         boost::asio::buffer(compressed, sizeBytes)
         );
     }
@@ -348,18 +363,18 @@ namespace pcl
   {
     if (!ec)
     {
-      std::cout << "Read size: " << clientReadLengthBuffer_[0] << " header size: " << clientReadLengthBuffer_[1]<< std::endl;
-      
+      std::cout << "Read size: " << clientReadLengthBuffer_[0] << " header size: " << clientReadLengthBuffer_[1] << std::endl;
+
       unsigned compressedElements = clientReadLengthBuffer_[0];
       unsigned headerElements = clientReadLengthBuffer_[1];
       unsigned toRead = compressedElements + headerElements*sizeof(unsigned) / sizeof(char);
 
       clientReadDataBuffer_.resize(toRead);
-      netVars_->socket->read_some(boost::asio::buffer(clientReadDataBuffer_, sizeof(char) *toRead));
-      
+      netVars_->socket.read_some(boost::asio::buffer(clientReadDataBuffer_, sizeof(char) *toRead));
+
       unsigned dataId;
       unsigned decompressedLength;
-      vector<unsigned char> decompressed;      
+      vector<unsigned char> decompressed;
 
       fringeCompression_.decodeData
         (
@@ -394,10 +409,10 @@ namespace pcl
       else if (dataId == NetGrabber::VerticesData)
       {
         cout << "Got vertices data with decom length: " << decompressedLength << endl;
-        
+
         pcl::Vertices *dataPoints = (pcl::Vertices *)decompressed.data();
         int count = decompressed.size()*sizeof(unsigned char) / sizeof(pcl::Vertices);
-        
+
         boost::shared_ptr<vector<pcl::Vertices> > vertices(new vector<pcl::Vertices>);
         for (int i = 0; i<count; i++)
         {
@@ -405,7 +420,7 @@ namespace pcl
         }
 
         //boost::shared_ptr<vector<pcl::Vertices> > vertices(new vector<pcl::Vertices>(dataPoints, dataPoints+count));
-        
+
         int numCloudSlots = point_cloud_vertices_signal_->num_slots();
         if (numCloudSlots > 0)
         {
@@ -415,7 +430,7 @@ namespace pcl
             );
         }
       }
-    
+
       clientConnectHandler(ec);
     }
     else
@@ -430,8 +445,8 @@ namespace pcl
       connectedToServer_ = true;
       printf("client connected HERE !\n");
       clientReadLengthBuffer_.resize(headerSize);
-      
-      netVars_->socket->async_read_some
+
+      netVars_->socket.async_read_some
         (
         boost::asio::buffer(clientReadLengthBuffer_, headerSize*sizeof(unsigned)),
         boost::bind(&NetGrabber::clientReadHandler, this, _1, _2)
@@ -450,7 +465,7 @@ namespace pcl
     if (!ec)
     {
       printf("Done resolving Trying to connect to server\n");
-      netVars_->socket->async_connect(*it, boost::bind(&NetGrabber::clientConnectHandler, this, _1));
+      netVars_->socket.async_connect(*it, boost::bind(&NetGrabber::clientConnectHandler, this, _1));
       //netVars_->socket->connect(*it);
 
     }
@@ -460,22 +475,164 @@ namespace pcl
 
   void NetGrabber::runIOService()
   {
-    netVars_->io_service->run();;
+    netVars_->io_service.run();;
   }
 
   int NetGrabber::serverLoop()
   {
     waitForClient(netVars_);
-    printf("Done waiting for client!\n");
+    
+    /*
+      boost::bind(&NetGrabber::handleReadHeader, this,
+      _1, _2));*/
+    /*
     int frameId = 0;
     while (running_ && readClient_)
     {
-      unsigned compressedLength;
-      std::vector<unsigned char> compressed;
-      int error = serverReadOnce(netVars_->socket, compressedLength, cameraParameters_, compressed);
-      if (error != 0)
-        return error;
-      cout << "Compressed length: " << compressedLength << endl;
+    unsigned compressedLength;
+    std::vector<unsigned char> compressed;
+    int error = serverReadOnce(netVars_->socket, compressedLength, cameraParameters_, compressed);
+    if (error != 0)
+    return error;
+    cout << "Compressed length: " << compressedLength << endl;
+
+    vector<unsigned short> decompressed;
+    fringeCompression_.decodePixels(compressedLength, cameraParameters_, compressed, decompressed);
+
+    int numPointCloudSlots = point_cloud_signal_->num_slots();
+    if (numPointCloudSlots > 0)
+    {
+    PointCloud<pcl::PointXYZ>::Ptr pointCloud = convertToXYZPointCloud(cameraParameters_, decompressed, frameId);
+    point_cloud_signal_->operator ()(pointCloud);
+    }
+
+    int numDepthSlots = depth_image_signal_->num_slots();
+    if (numDepthSlots > 0)
+    {
+    depth_image_signal_->operator ()
+    (
+    boost::make_shared<const vector<unsigned short> > (decompressed),
+    boost::make_shared<const pcl::OpenNICameraParameters> (cameraParameters_)
+    );
+    }
+
+    frameId++;
+    }
+    */
+
+    return 0;
+  }
+
+  int NetGrabber::serverReadOnce
+    (
+    const boost::shared_ptr<tcp::socket> & socket//,
+    /*    unsigned& compressedLength,
+        OpenNICameraParameters & sensorParams,
+        std::vector<unsigned char> & dataBuffer*/
+        )
+  {
+    //    boost::array<unsigned, 1> compressedLengthBuffer;
+    //    boost::array<OpenNICameraParameters, 1> sensorParamsBuffer;
+    //    boost::system::error_code error;
+
+    /*
+    size_t len = socket->read_some(boost::asio::buffer(compressedLengthBuffer), error);
+    compressedLength = compressedLengthBuffer[0];
+    if (error == boost::asio::error::eof)
+    return 1; // Connection closed cleanly by peer.
+    else if (error)
+    throw boost::system::system_error(error); // Some other error.
+    cout << "Just read in: " << len << " bytes" << endl;
+    */
+    /*
+    len = socket->read_some(boost::asio::buffer(sensorParamsBuffer), error);
+    sensorParams = sensorParamsBuffer[0];
+    if (error == boost::asio::error::eof)
+    return 1; // Connection closed cleanly by peer.
+    else if (error)
+    throw boost::system::system_error(error); // Some other error.
+    cout << "Just read in2: " << len << " bytes" << endl;
+
+    dataBuffer.resize(compressedLength);
+    len = socket->read_some(boost::asio::buffer(dataBuffer), error);
+    if (error == boost::asio::error::eof)
+    return 1; // Connection closed cleanly by peer.
+    else if (error)
+    throw boost::system::system_error(error); // Some other error.
+    cout << "Just read in3: " << len << " bytes" << endl;
+    */
+    return 0;
+  }
+
+  void NetGrabber::handleReadHeader
+    (
+    const boost::system::error_code& error,
+    std::size_t bytes_transferred
+    )
+  {
+    if (!error)
+    {
+      /*unsigned compressedLength = messageBuffer_.compressedLengthBuffer[0];
+      cout << "Read compressed Length " << compressedLength << endl;
+
+      netVars_->socket.async_receive(
+        boost::asio::buffer(messageBuffer_.sensorParamsBuffer),
+        boost::bind(&NetGrabber::handleReadSensorParams, this,
+        _1, _2));*/
+      /*
+
+      boost::asio::async_read(socket,
+      boost::asio::buffer(messageBuffer_.sensorParamsBuffer),
+      boost::bind(&NetGrabber::handleReadSensorParams, shared_from_this(),
+      boost::asio::placeholders::error, socket));*/
+    }
+    else
+    {
+      cout << "Error reading header" << endl;
+    }
+  }
+
+  void NetGrabber::handleReadSensorParams
+    (
+    const boost::system::error_code& error,
+    std::size_t bytes_transferred
+    )
+  {
+    if (!error)
+    {
+      cout << "Read sensor params " << endl;
+      /*unsigned compressedLength = messageBuffer_.compressedLengthBuffer[0];
+      messageBuffer_.dataBuffer.resize(compressedLength);
+
+      netVars_->socket->async_receive(
+        boost::asio::buffer(messageBuffer_.dataBuffer),
+        boost::bind(&NetGrabber::handleReadDataBuffer, this,
+        _1, _2));*/
+      /*
+      boost::asio::async_read(socket,
+      boost::asio::buffer(dataBuffer),
+      boost::bind(&NetGrabber::handleReadDataBuffer, shared_from_this(),
+      boost::asio::placeholders::error, socket, dataBuffer));*/
+    }
+    else
+    {
+      cout << "Error reading sensor params" << endl;
+    }
+  }
+
+  void NetGrabber::handleReadDataBuffer
+    (
+    const boost::system::error_code& error,
+    std::size_t bytes_transferred
+    )
+  {
+    if (!error)
+    {
+      cout << "Read data buffer " << endl;
+      /*
+      unsigned compressedLength = messageBuffer_.compressedLengthBuffer[0];
+      cameraParameters_ = messageBuffer_.sensorParamsBuffer[0];
+      vector<unsigned char> & compressed = messageBuffer_.dataBuffer;
 
       vector<unsigned short> decompressed;
       fringeCompression_.decodePixels(compressedLength, cameraParameters_, compressed, decompressed);
@@ -483,64 +640,32 @@ namespace pcl
       int numPointCloudSlots = point_cloud_signal_->num_slots();
       if (numPointCloudSlots > 0)
       {
-        PointCloud<pcl::PointXYZ>::Ptr pointCloud = convertToXYZPointCloud(cameraParameters_, decompressed, frameId);
+        PointCloud<pcl::PointXYZ>::Ptr pointCloud = convertToXYZPointCloud(cameraParameters_, decompressed, frameId_);
         point_cloud_signal_->operator ()(pointCloud);
       }
 
       int numDepthSlots = depth_image_signal_->num_slots();
       if (numDepthSlots > 0)
       {
-          depth_image_signal_->operator ()
+        depth_image_signal_->operator ()
           (
-          boost::make_shared<const vector<unsigned short> > (decompressed),
-          boost::make_shared<const pcl::OpenNICameraParameters> (cameraParameters_)
+          boost::make_shared<const vector<unsigned short> >(decompressed),
+          boost::make_shared<const pcl::OpenNICameraParameters>(cameraParameters_)
           );
       }
 
-      frameId++;
+      frameId_++;
+
+      netVars_->socket.async_receive(
+        boost::asio::buffer(messageBuffer_.compressedLengthBuffer),
+        boost::bind(&NetGrabber::handleReadHeader, this,
+        _1, _2));*/
     }
-
-    return 0;
+    else
+    {
+      cout << "Error reading data buffer" << endl;
+    }
   }
-
-  int NetGrabber::serverReadOnce
-    (
-    boost::shared_ptr<tcp::socket> socket,
-    unsigned& compressedLength,
-    OpenNICameraParameters & sensorParams,
-    std::vector<unsigned char> & dataBuffer
-    )
-  {
-    boost::array<unsigned, 1> compressedLengthBuffer;
-    boost::array<OpenNICameraParameters, 1> sensorParamsBuffer;
-    boost::system::error_code error;
-
-    size_t len = socket->read_some(boost::asio::buffer(compressedLengthBuffer), error);
-    compressedLength = compressedLengthBuffer[0];
-    if (error == boost::asio::error::eof)
-      return 1; // Connection closed cleanly by peer.
-    else if (error)
-      throw boost::system::system_error(error); // Some other error.
-    cout << "Just read in: " << len << " bytes" << endl;
-
-    len = socket->read_some(boost::asio::buffer(sensorParamsBuffer), error);
-    sensorParams = sensorParamsBuffer[0];
-    if (error == boost::asio::error::eof)
-      return 1; // Connection closed cleanly by peer.
-    else if (error)
-      throw boost::system::system_error(error); // Some other error.
-    cout << "Just read in2: " << len << " bytes" << endl;
-
-    dataBuffer.resize(compressedLength);
-    len = socket->read_some(boost::asio::buffer(dataBuffer), error);
-    if (error == boost::asio::error::eof)
-      return 1; // Connection closed cleanly by peer.
-    else if (error)
-      throw boost::system::system_error(error); // Some other error.
-    cout << "Just read in3: " << len << " bytes" << endl;
-    return 0;
-  }
-
 
   void NetGrabber::stop()
   {
@@ -553,7 +678,7 @@ namespace pcl
         device_->stop();
       }
 
-      netVars_->socket->close();
+      netVars_->socket.close();
     }
     else
     {
@@ -577,81 +702,104 @@ namespace pcl
 
   }
 
-  void NetGrabber::waitForClient(boost::shared_ptr<NetGrabber::NetworkParameters> server)
+  void NetGrabber::waitForClient(boost::shared_ptr<NetState> server)
   {
-    try
+    server->acceptor.async_accept(server->socket,
+      [this, server](boost::system::error_code ec)
     {
-      server->acceptor->accept(*(server->socket));
-    }
-    catch (boost::system::system_error e)
-    {
-      cout << "Error on accepting!" << endl;
-    }
-    
+      if (!ec)
+      {
+        printf("Done waiting for client!\n");
+
+        frameId_ = 0;
+        /*
+        auto self(shared_from_this());
+        netVars_->socket.async_receive(
+          boost::asio::buffer(messageBuffer_.compressedLengthBuffer),
+          [this, self](boost::system::error_code ec, std::size_t )
+        {
+          if (!ec)
+          {
+            cout << "here!" << endl;// do_read_body();
+          }
+          else
+          {
+            cout << "Done!" << endl;
+            //room_.leave(shared_from_this());
+          }
+        });*/
+      }
+      else
+      {
+        cout << "Error on accepting!" << endl;
+      }
+
+      waitForClient(server);
+    });
   }
 
   void NetGrabber::sendCompressedBuffer
     (
-    boost::shared_ptr<tcp::socket> socket,
+    tcp::socket& socket,
     vector<int>& buffer,
     unsigned compressedLength
     )
   {
     if (connectedToServer_ && compressedLength > 0)
     {
-      boost::asio::write(*socket, boost::asio::buffer(buffer, compressedLength * sizeof(int)));
+      boost::asio::write(socket, boost::asio::buffer(buffer, compressedLength * sizeof(int)));
     }
   }
 
   void NetGrabber::sendCompressedBuffer
     (
-    boost::shared_ptr<tcp::socket> socket,
+    tcp::socket& socket,
     vector<unsigned char>& buffer,
     unsigned compressedLength
     )
   {
     if (connectedToServer_ && compressedLength > 0)
     {
-      boost::asio::write(*socket, boost::asio::buffer(buffer, compressedLength * sizeof (unsigned char)));
+      boost::asio::write(socket, boost::asio::buffer(buffer, compressedLength * sizeof (unsigned char)));
     }
   }
 
 #if defined HAVE_OPENNI || defined HAVE_OPENNI2
-    void NetGrabber::depth_image_cb_
+  void NetGrabber::depth_image_cb_
     (
     const boost::shared_ptr<Image>& rgbImage,
     const boost::shared_ptr<DepthImage>& depthImage,
     float focalLength
     )
+  {
+
+    cout << "Depth image CB!!!!" << endl;
+    if (count_ % 1 == 0)
     {
-      
-      cout << "Depth image CB!!!!" << endl;
-      if (count_ % 1 == 0)
-      {
-        OpenNICameraParameters parameters;
-        getOpenNICameraParameters(parameters, boost::dynamic_pointer_cast<OpenNIGrabber>(device_), depthImage);
+      OpenNICameraParameters parameters;
+      getOpenNICameraParameters(parameters, boost::dynamic_pointer_cast<OpenNIGrabber>(device_), depthImage);
 
-        unsigned compressedLength;
-        vector<unsigned char> compressed;
-        encodeDepthImage
-          (
-          depthImage,
-          compressionParameter_,
-          parameters,
-          compressedLength,
-          compressed
-          );
+      unsigned compressedLength;
+      vector<unsigned char> compressed;
+      encodeDepthImage
+        (
+        depthImage,
+        compressionParameter_,
+        parameters,
+        compressedLength,
+        compressed
+        );
 
-        sendCompressedBuffer
-          (
-          netVars_->socket,
-          compressed,
-          compressedLength
-          );
-      }
+      sendCompressedBuffer
+        (
+        netVars_->socket,
+        compressed,
+        compressedLength
+        );
+    }
 
-      count_++;
-      cout << "DONE WITH Depth image CB!!!!" << endl;
+    count_++;
+    cout << "DONE WITH Depth image CB!!!!" << endl;
   }
 
   void NetGrabber::getOpenNICameraParameters
@@ -675,7 +823,7 @@ namespace pcl
     parameters.depthFocalLengthX = openNIDevice->getDepthFocalLength();
     parameters.depthFocalLengthY = openNIDevice->getDepthFocalLength();
 #endif
-    
+
     parameters.noSampleValue = depthImage->getNoSampleValue();
     parameters.shadowValue = depthImage->getShadowValue();
     openNIGrabber->getDepthCameraIntrinsics(parameters.focalLengthX, parameters.focalLengthY, parameters.principalPointX, parameters.principalPointY);

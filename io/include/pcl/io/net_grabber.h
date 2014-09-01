@@ -45,6 +45,7 @@
 #include <pcl/io/boost.h>
 #include <boost/asio.hpp>
 #include <pcl/io/grabber.h>
+#include <cstddef>
 #include <string>
 #include <vector>
 //#include <deque>
@@ -55,6 +56,7 @@
 
 #include <pcl/io/openni_camera_parameters.h>
 #include <pcl/compression/fringe_compression.h>
+#include <pcl/io/net_state.h>
 
 #ifdef HAVE_OPENNI2
 #include <pcl/io/openni2/openni2_device.h>
@@ -71,7 +73,7 @@ using boost::asio::ip::tcp;
 
 namespace pcl
 {
-  class PCL_EXPORTS NetGrabber : public Grabber
+  class PCL_EXPORTS NetGrabber : public Grabber, public std::enable_shared_from_this<NetGrabber>
   {
   public:
     typedef boost::shared_ptr<NetGrabber> Ptr;
@@ -155,15 +157,6 @@ namespace pcl
       isConnectedToServer() { return connectedToServer_; }
 
   protected:
-    struct NetworkParameters
-    {
-      boost::shared_ptr<boost::asio::io_service> io_service;
-      boost::shared_ptr<tcp::resolver> resolver;
-      boost::shared_ptr<tcp::resolver::query> query;
-      boost::shared_ptr<tcp::endpoint> endpoint;
-      boost::shared_ptr<tcp::socket> socket;
-      boost::shared_ptr<tcp::acceptor> acceptor;
-    };
 
     /** \brief Sets up the client to talk to a sever at a given address on a given port. */
     void
@@ -179,7 +172,7 @@ namespace pcl
 
     // helper methods
 
-    void waitForClient(boost::shared_ptr<NetGrabber::NetworkParameters> server);
+    void waitForClient(boost::shared_ptr<NetState> server);
 
     void runIOService();
 
@@ -228,14 +221,14 @@ namespace pcl
 
     void sendCompressedBuffer
       (
-      boost::shared_ptr<tcp::socket> socket,
+      tcp::socket& socket,
       vector<unsigned char>& buffer,
       unsigned compressedLength
       );
 
     void NetGrabber::sendCompressedBuffer
       (
-      boost::shared_ptr<tcp::socket> socket,
+      tcp::socket& socket,
       vector<int>& buffer,
       unsigned compressedLength
       );
@@ -253,10 +246,28 @@ namespace pcl
 
     int serverReadOnce
       (
-      boost::shared_ptr<tcp::socket> socket,
-      unsigned& compressedLength,
+      const boost::shared_ptr<tcp::socket>& socket//,
+      /*unsigned& compressedLength,
       OpenNICameraParameters & sensorParams,
-      std::vector<unsigned char> & dataBuffer
+      std::vector<unsigned char> & dataBuffer*/
+      );
+
+    void NetGrabber::handleReadHeader
+      (
+      const boost::system::error_code& error,
+      std::size_t bytes_transferred
+      );
+
+    void NetGrabber::handleReadSensorParams
+      (
+      const boost::system::error_code& error,
+      std::size_t bytes_transferred
+      );
+
+    void NetGrabber::handleReadDataBuffer
+      (
+      const boost::system::error_code& error,
+      std::size_t bytes_transferred
       );
 
     int serverLoop();
@@ -290,13 +301,15 @@ namespace pcl
 
     string serverAddress_;
 
-    boost::shared_ptr<NetworkParameters> netVars_;
+    boost::shared_ptr<NetState> netVars_;
 
     boost::shared_ptr<tcp::socket> clientSocket_;
 
     FringeCompression fringeCompression_;
 
     boost::shared_ptr<boost::thread> ioThread_;
+
+    boost::shared_ptr<boost::thread> serverThread_;
 
     OpenNICameraParameters cameraParameters_;
 
@@ -305,6 +318,10 @@ namespace pcl
     bool useGrabber_;
 
     bool readClient_;
+
+    int frameId_;
+
+    //OpenNiMessage messageBuffer_;
 
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
